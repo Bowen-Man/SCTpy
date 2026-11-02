@@ -141,3 +141,24 @@ python -m benchmarks.compare_correctness \
   --enforce
 ```
 
+## Parameter-outlier checkpoint
+
+The Level A exporter persists the named `model_pars_outliers` vector exposed by
+the public `vst()` result. The correctness report compares this mask by gene
+name, so outlier behavior is observable without reading or packaging GPL
+implementation code. This checkpoint is diagnostic and has no acceptance gate
+yet.
+
+On the larger fixture, Level A marks 150 genes as parameter outliers. The
+default `native` rule marks 176 genes, overlaps on 144, and has Jaccard
+`0.791209`. With `dispersion_regularization="sct_v2"`, the current global-MAD
+rule marks no genes, giving Jaccard `0.0` with Level A.
+
+This localizes the mixed A/B result above: the v2 dispersion transform improves
+regularized theta, but the native outlier rule is not invariant to that change
+of coordinates. The 2022 paper specifies the v2 model changes but does not
+fully specify the historical binned outlier helper. A clean-room compatibility
+implementation therefore remains `unknown`; the next safe step is additional
+black-box experiments or an independently published algorithmic specification,
+not source translation.
+

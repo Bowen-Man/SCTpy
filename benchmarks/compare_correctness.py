@@ -11,7 +11,13 @@ from scipy import sparse
 from sctransform_native import SCTConfig, fit_transform
 
 from ._common import load_fixture, load_manifest, write_json
-from .correctness import THRESHOLDS, gate_metrics, jaccard, numeric_metrics
+from .correctness import (
+    THRESHOLDS,
+    gate_metrics,
+    jaccard,
+    named_set_metrics,
+    numeric_metrics,
+)
 
 
 def _read_lines(path: Path) -> tuple[str, ...]:
@@ -44,6 +50,11 @@ def load_r_oracle(path: Path) -> dict[str, Any]:
         "residual_variance": np.fromfile(path / "residual_variance.f64", dtype="<f8"),
         "hvg_genes": _read_lines(path / "hvg_genes.txt"),
         "poisson_genes": _read_lines(path / "poisson_genes.txt"),
+        "outlier_genes": (
+            _read_lines(path / "outlier_genes.txt")
+            if (path / "outlier_genes.txt").exists()
+            else None
+        ),
     }
 
 
@@ -120,6 +131,10 @@ def compare_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
     }
     poisson_metrics["gate"] = gate_metrics(poisson_metrics, THRESHOLDS["poisson"])
     report["poisson_genes"] = poisson_metrics
+    left_outliers = left.get("outlier_genes")
+    right_outliers = right.get("outlier_genes")
+    if left_outliers is not None and right_outliers is not None:
+        report["parameter_outliers"] = named_set_metrics(left_outliers, right_outliers)
 
     eligible_count = min(len(left["hvg_genes"]), len(right["hvg_genes"]))
     hvg: dict[str, Any] = {}
@@ -176,6 +191,9 @@ def native_result(
             "hvg_genes": np.asarray(result.gene_names)[result.hvg_order],
             "poisson_genes": np.asarray(result.gene_names)[
                 np.flatnonzero(result.poisson_gene & result.eligible_gene)
+            ],
+            "outlier_genes": np.asarray(result.gene_names)[
+                np.flatnonzero(result.parameter_outlier)
             ],
         },
         result.timing,

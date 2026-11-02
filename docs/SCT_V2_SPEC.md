@@ -107,6 +107,12 @@ Poisson-like genes retain `theta=infinity` and the analytic intercept. Failed NB
 never silently regularized; they are flagged and excluded from the smoothing training set.
 **project decision**
 
+The alpha outlier policy remains the documented global MAD rule. A black-box checkpoint
+against the named outlier mask returned by external `sctransform::vst()` is part of the
+correctness report. The exact historical reference outlier algorithm is not completely
+specified by the v2 paper, so an R-compatible clean-room replacement is currently
+**unknown** rather than inferred from GPL implementation details.
+
 ## Pearson residuals and v2 floor
 
 Using regularized parameters:

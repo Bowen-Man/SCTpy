@@ -68,6 +68,22 @@ def jaccard(left: Sequence[str], right: Sequence[str]) -> float:
     return 1.0 if not union else len(left_set & right_set) / len(union)
 
 
+def named_set_metrics(
+    left: Sequence[str], right: Sequence[str]
+) -> dict[str, int | float]:
+    left_set = set(left)
+    right_set = set(right)
+    intersection = left_set & right_set
+    union = left_set | right_set
+    return {
+        "left_count": len(left_set),
+        "right_count": len(right_set),
+        "intersection": len(intersection),
+        "union": len(union),
+        "jaccard": 1.0 if not union else len(intersection) / len(union),
+    }
+
+
 def gate_metrics(metrics: dict[str, Any], thresholds: dict[str, float]) -> bool:
     for name, threshold in thresholds.items():
         raw_value = metrics[name]
