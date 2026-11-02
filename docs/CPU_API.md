@@ -18,6 +18,19 @@ result = fit_transform(
 transpose at validation. Internally, every matrix is genes x cells. Dense NumPy and SciPy
 CSR/CSC inputs are supported; model fitting and residual output use float64.
 
+The optional AnnData adapter reads `adata.X` or one explicitly named layer without
+mutating the object:
+
+```python
+from sctransform_native import fit_transform_anndata
+
+result = fit_transform_anndata(adata, layer="counts")
+```
+
+AnnData is cells x genes, so the adapter calls the core with that orientation explicitly.
+A CuPy-backed `X` or layer raises `ImplicitDeviceTransferError`; callers must choose and
+perform device movement themselves.
+
 ## Result contract
 
 `SCTResult` exposes:

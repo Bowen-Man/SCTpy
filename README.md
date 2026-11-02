@@ -28,6 +28,7 @@ See:
 - [CPU alpha API](docs/CPU_API.md)
 - [correctness gate](docs/CORRECTNESS.md)
 - [benchmark and profiling report](docs/BENCHMARKS.md)
+- [GPU feasibility report](docs/GPU_FEASIBILITY.md)
 - [licensing rationale](docs/LICENSING.md)
 - [RAPIDS integration boundary](docs/RAPIDS_INTEGRATION.md)
 
@@ -57,6 +58,15 @@ python -m pytest
 
 The package supports Python 3.10 through 3.13 on Windows and Linux. GPU packages are
 never required for CPU installation.
+
+AnnData support is an optional, non-mutating adapter:
+
+```bash
+python -m pip install -e ".[anndata]"
+```
+
+CUDA experiments use explicit versioned extras (`gpu-cuda12` or `gpu-cuda13`) and are
+never imported by the CPU path.
 
 ## License
 

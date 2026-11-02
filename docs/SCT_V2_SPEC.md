@@ -84,7 +84,8 @@ policy are configuration recorded in results. The implementation uses a Gaussian
 Nadaraya-Watson smoother and an independent implementation of the published
 Sheather--Jones solve-the-equation selector, including diagonal terms, with the configured
 default adjustment of 3. The selector is derived from equations 12--13 of Sheather and
-Jones (1991), not from GPL source. **confirmed from paper and official documentation;
+Jones ([1991](https://doi.org/10.1111/j.2517-6161.1991.tb01857.x)), not from GPL source.
+**confirmed from paper and official documentation;
 project decision** for the numerical blocking and root solver.
 
 Poisson-like genes retain `theta=infinity` and the analytic intercept. Failed NB fits are

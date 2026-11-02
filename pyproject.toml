@@ -37,6 +37,15 @@ test = [
 benchmark = [
   "psutil>=5.9",
 ]
+anndata = [
+  "anndata>=0.10.8",
+]
+gpu-cuda12 = [
+  "cupy-cuda12x>=14,<15",
+]
+gpu-cuda13 = [
+  "cupy-cuda13x>=14,<15",
+]
 
 [project.urls]
 Homepage = "https://github.com/Bowen-Man/sctransform-native"
@@ -48,3 +57,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
+markers = [
+  "gpu: requires an installed CuPy package and a working CUDA device",
+]
