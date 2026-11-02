@@ -1,6 +1,11 @@
 import numpy as np
 
-from benchmarks.correctness import gate_metrics, jaccard, numeric_metrics
+from benchmarks.correctness import (
+    gate_metrics,
+    jaccard,
+    named_set_metrics,
+    numeric_metrics,
+)
 
 
 def test_numeric_metrics_report_all_required_statistics() -> None:
@@ -23,6 +28,17 @@ def test_jaccard_and_gate_direction() -> None:
     assert not gate_metrics(
         {"mae": 0.2, "pearson": 0.999}, {"mae": 0.1, "pearson": 0.99}
     )
+
+
+def test_named_set_metrics_reports_overlap_and_sizes() -> None:
+    metrics = named_set_metrics(("a", "b"), ("b", "c", "d"))
+    assert metrics == {
+        "left_count": 2,
+        "right_count": 3,
+        "intersection": 1,
+        "union": 4,
+        "jaccard": 0.25,
+    }
 
 
 def test_effectively_constant_arrays_report_undefined_correlations() -> None:
