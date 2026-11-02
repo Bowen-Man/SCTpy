@@ -237,3 +237,54 @@ the retained training support. This zero effect is recorded rather than
 generalized; datasets with abundance values outside the post-outlier training
 range can exercise the explicit boundary policy.
 
+## R-stats regularization checkpoint
+
+The optional `regularization_method="r_stats"` path was first checked at the primitive
+level against a separately installed R 4.5.2 process. The `bw.SJ` values agree to displayed
+float64 precision for an eight-point exact-pair case and a 600-point binned case; four
+`ksmooth` predictions and a two-grid outlier mask also match their fixed golden outputs.
+
+The end-to-end comparison combines this method with `sct_v2`, `clamp`, and the existing
+experimental `moment_ratio` theta policy. Relative to the previous
+`sct_v2 + moment_ratio` result on the larger fixture:
+
+| Quantity | native regularizer | `r_stats` regularizer |
+|---|---:|---:|
+| regularized intercept RMSE | 0.001067 | 0.000656 |
+| regularized log10(theta) RMSE | 0.008003 | 0.008083 |
+| clipped residual RMSE | 0.003331 | 0.002620 |
+| residual variance RMSE | 0.004912 | 0.004577 |
+| Top-1000 / 2000 / 3000 HVG Jaccard | 0.992032 / 0.997004 / 1.0 | 0.992032 / 0.997004 / 1.0 |
+| parameter-outlier Jaccard | 0.910828 | 0.916667 |
+
+The theta metric is slightly worse, while the intercept and downstream residual metrics
+improve. On the small fixture, residual RMSE decreases from `0.005671` to `0.002989` and
+residual-variance RMSE from `0.006621` to `0.004798`; regularized log10(theta) RMSE changes
+from `0.006869` to `0.007127`.
+
+An oracle-raw-parameter reinjection isolates regularization from the native optimizer. On
+the larger fixture, the Python path reproduces the oracle's regularized intercept with
+RMSE `1.50e-14` and maximum error `8.17e-14`; regularized log10(theta) has RMSE `9.00e-16`
+and maximum error `3.89e-15`. This confirms that the remaining end-to-end discrepancy is
+upstream in raw fitting and theta branch selection, not in the new regularizer.
+
+```bash
+python -m benchmarks.compare_correctness \
+  --fixture benchmark-results/large/fixture.npz \
+  --manifest benchmark-results/large/fixture.selection.json \
+  --r-oracle benchmark-results/large/r-oracle \
+  --reference benchmark-results/large/reference-v0.4.0.npz \
+  --dispersion-regularization sct_v2 \
+  --regularization-method r_stats \
+  --regularization-support clamp \
+  --theta-postprocess moment_ratio \
+  --output benchmark-results/large/correctness-r-stats.json \
+  --enforce
+
+python -m benchmarks.diagnose_regularization \
+  --fixture benchmark-results/large/fixture.npz \
+  --r-oracle benchmark-results/large/r-oracle \
+  --output benchmark-results/large/regularization-reinjection.json \
+  --enforce
+```
+

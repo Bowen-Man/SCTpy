@@ -1,6 +1,6 @@
 # sctransform-native
 
-`sctransform-native` is a clean-room, native Python research implementation of the
+`sctransform-native` is an independent native Python research implementation of the
 documented SCTransform v2 statistical model. The first release line is deliberately
 labelled alpha: it implements only behavior that has an explicit mathematical contract
 and does not claim the complete historical R API.
@@ -9,8 +9,9 @@ The project has two strict boundaries:
 
 - the numerical core is independent NumPy/SciPy code and contains no project-owned
   C, C++, Fortran, or R runtime component;
-- GPL implementations may be executed outside this repository as black-box oracles,
-  but their source, tests, comments, layout, and binaries are not inputs to this codebase.
+- external implementations may define observable algorithmic behavior and serve as
+  differential oracles, but no source text, tests, comments, layout, binaries, or runtime
+  component is copied or shipped here.
 
 Current version: `0.1.0a1`.
 

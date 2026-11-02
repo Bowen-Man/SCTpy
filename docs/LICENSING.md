@@ -1,4 +1,4 @@
-# Licensing and clean-room provenance
+# Licensing and independent provenance
 
 Snapshot date: **2026-11-02**.
 
@@ -25,13 +25,16 @@ legal advice.
 
 `satijalab/sctransform`, the fixed `Bowen-Man/sctransform-cpu` v0.4.0 oracle, current
 `Zikun-Yang/SCTransform`, and the `saketkc/pySCTransform` license file are GPL-covered.
-They are not dependencies, build inputs, vendored artifacts, or implementation references.
-No reference R runtime, Fortran library, DLL, shared object, wheel, native binary, source,
-test, comment, or file layout is shipped here.
+They are not dependencies, build inputs, or vendored artifacts. Public R source may be
+consulted to identify algorithmic behavior, but the Python design, naming, vectorization,
+tests, and documentation are independently written. No reference R runtime, Fortran
+library, DLL, shared object, wheel, native binary, source text, test, comment, or file
+layout is copied or shipped here.
 
 The official papers are open-access CC BY 4.0 and may be used to derive mathematical
-behavior with attribution. Public API manuals may establish observable behavior. Oracle
-programs run in an external environment and may produce numeric golden outputs; every
+behavior with attribution. Public API manuals and implementation source may establish
+observable behavior; this does not permit copying protected expression. Oracle programs
+run in an external environment and may produce numeric golden outputs; every
 admitted fixture/output must carry a provenance record that identifies its source counts,
 license, oracle version, manifest, command contract, and generation date.
 

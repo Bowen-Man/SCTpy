@@ -173,6 +173,7 @@ def native_result(
     manifest_path: Path,
     *,
     dispersion_regularization: str = "native",
+    regularization_method: str = "native",
     regularization_support: str = "extrapolate",
     theta_postprocess: str = "none",
 ) -> tuple[dict[str, Any], dict[str, float]]:
@@ -187,6 +188,7 @@ def native_result(
             n_genes=None,
             n_cells=None,
             dispersion_regularization=dispersion_regularization,
+            regularization_method=regularization_method,
             regularization_support=regularization_support,
             theta_postprocess=theta_postprocess,
             theta_moment_ratio_threshold=THETA_MOMENT_RATIO_THRESHOLD,
@@ -260,6 +262,11 @@ def main() -> None:
         default="native",
     )
     parser.add_argument(
+        "--regularization-method",
+        choices=("native", "r_stats"),
+        default="native",
+    )
+    parser.add_argument(
         "--regularization-support",
         choices=("extrapolate", "clamp"),
         default="extrapolate",
@@ -278,6 +285,7 @@ def main() -> None:
         args.fixture,
         args.manifest,
         dispersion_regularization=args.dispersion_regularization,
+        regularization_method=args.regularization_method,
         regularization_support=args.regularization_support,
         theta_postprocess=args.theta_postprocess,
     )
@@ -285,6 +293,7 @@ def main() -> None:
         "schema_version": 1,
         "generated_on": "2026-11-02",
         "dispersion_regularization": args.dispersion_regularization,
+        "regularization_method": args.regularization_method,
         "regularization_support": args.regularization_support,
         "theta_postprocess": args.theta_postprocess,
         "theta_moment_ratio_threshold": THETA_MOMENT_RATIO_THRESHOLD,
