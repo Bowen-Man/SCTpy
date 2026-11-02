@@ -2,8 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from .anndata import fit_transform_anndata
-from .backend import ImplicitDeviceTransferError
+from .anndata import ImplicitDeviceTransferError, fit_transform_anndata
 from .core import SCTConfig, SCTResult, fit_transform
 from .selection import SelectionManifest, create_selection_manifest
 

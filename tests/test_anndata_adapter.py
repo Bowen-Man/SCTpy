@@ -11,7 +11,6 @@ from sctransform_native import (
     fit_transform,
     fit_transform_anndata,
 )
-from sctransform_native.backend import infer_device
 
 
 def _adata(counts: object) -> SimpleNamespace:
@@ -52,7 +51,6 @@ def test_anndata_adapter_rejects_hidden_cuda_to_cpu_transfer() -> None:
         }
 
     counts = FakeCudaArray()
-    assert infer_device(counts).kind == "cuda"
     with pytest.raises(ImplicitDeviceTransferError, match="explicitly transfer"):
         fit_transform_anndata(_adata(counts))
 
