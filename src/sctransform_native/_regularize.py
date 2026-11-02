@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 import numpy as np
 from scipy.optimize import brentq
 
@@ -7,6 +9,9 @@ from scipy.optimize import brentq
 # A standard normal has quartiles +/- 0.67448975..., hence sigma = bandwidth / this.
 _NORMAL_BANDWIDTH_TO_SIGMA = 4.0 * 0.6744897501960817
 _NORMAL_KERNEL_ROUGHNESS = 1.0 / (2.0 * np.sqrt(np.pi))
+_LOG_10 = np.log(10.0)
+
+DispersionRegularization = Literal["native", "sct_v2"]
 
 
 def _normal_derivative_functional(
@@ -162,6 +167,37 @@ def _mad_outliers(residual: np.ndarray, *, threshold: float) -> np.ndarray:
     return np.abs(residual - center) > threshold * scale
 
 
+def _dispersion_target(
+    gene_mean: np.ndarray,
+    geometric_mean: np.ndarray,
+    theta: np.ndarray,
+    *,
+    mode: DispersionRegularization,
+) -> np.ndarray:
+    if mode == "native":
+        return np.log10(gene_mean / theta)
+    if mode == "sct_v2":
+        return np.log1p(geometric_mean / theta) / _LOG_10
+    raise ValueError(f"unknown dispersion regularization mode: {mode}")
+
+
+def _theta_from_dispersion(
+    gene_mean: np.ndarray,
+    geometric_mean: np.ndarray,
+    dispersion: np.ndarray,
+    *,
+    mode: DispersionRegularization,
+) -> np.ndarray:
+    if mode == "native":
+        return gene_mean / np.power(10.0, dispersion)
+    if mode == "sct_v2":
+        denominator = np.expm1(_LOG_10 * dispersion)
+        theta = np.full(dispersion.shape, np.inf, dtype=np.float64)
+        np.divide(geometric_mean, denominator, out=theta, where=denominator > 0.0)
+        return theta
+    raise ValueError(f"unknown dispersion regularization mode: {mode}")
+
+
 def regularize_parameters(
     *,
     gene_mean: np.ndarray,
@@ -174,6 +210,7 @@ def regularize_parameters(
     outlier_mad_threshold: float,
     theta_min: float,
     theta_max: float,
+    dispersion_regularization: DispersionRegularization,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     train_indices = np.flatnonzero(training_mask)
     predict_indices = np.flatnonzero(prediction_mask)
@@ -182,7 +219,12 @@ def regularize_parameters(
 
     x_train = np.log10(np.maximum(geometric_mean[train_indices], np.finfo(float).tiny))
     intercept_train = raw_intercept[train_indices]
-    od_train = np.log10(gene_mean[train_indices] / raw_theta[train_indices])
+    od_train = _dispersion_target(
+        gene_mean[train_indices],
+        geometric_mean[train_indices],
+        raw_theta[train_indices],
+        mode=dispersion_regularization,
+    )
     bandwidth = sheather_jones_bandwidth(x_train, adjust=bandwidth_adjust)
 
     outlier = np.zeros(raw_intercept.shape, dtype=bool)
@@ -214,6 +256,11 @@ def regularize_parameters(
     od_predict = gaussian_nadaraya_watson(
         x_train, od_train, x_predict, bandwidth=bandwidth
     )
-    theta = gene_mean[predict_indices] / np.power(10.0, od_predict)
+    theta = _theta_from_dispersion(
+        gene_mean[predict_indices],
+        geometric_mean[predict_indices],
+        od_predict,
+        mode=dispersion_regularization,
+    )
     regularized_theta[predict_indices] = np.clip(theta, theta_min, theta_max)
     return regularized_intercept, regularized_theta, outlier, bandwidth

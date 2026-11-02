@@ -60,6 +60,11 @@ def test_unknown_orientation_is_rejected() -> None:
         _fit(np.ones((2, 2), dtype=int), matrix_orientation="unknown")  # type: ignore[arg-type]
 
 
+def test_unknown_dispersion_regularization_is_rejected() -> None:
+    with pytest.raises(ValueError, match="dispersion_regularization"):
+        SCTConfig(dispersion_regularization="unknown")  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     ("keyword", "message"),
     [

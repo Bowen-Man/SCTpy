@@ -105,3 +105,39 @@ python -m benchmarks.diagnose_residuals \
   --enforce
 ```
 
+## Dispersion regularization A/B
+
+The larger fixture was also run with the same counts, manifest, raw estimator,
+bandwidth selector, smoother, and thresholds while changing only the dispersion
+target and inverse transform. `native` is the alpha default;
+`sct_v2` uses `log10(1 + geometric_mean / theta)` and its matching inverse.
+
+| Quantity | `native` | `sct_v2` |
+|---|---:|---:|
+| regularized log10(theta) RMSE | 0.046279 | 0.032621 |
+| regularized log10(theta) Spearman | 0.996418 | 1.000000 |
+| regularized intercept RMSE | 0.001132 | 0.003111 |
+| clipped residual RMSE | 0.014760 | 0.015872 |
+| clipped residual Pearson | 0.999975 | 0.999980 |
+| residual variance RMSE | 0.028817 | 0.029812 |
+| Top-1000 HVG Jaccard | 0.956947 | 0.951220 |
+| Top-2000 HVG Jaccard | 0.986097 | 0.987084 |
+
+The v2 transform materially improves regularized-theta agreement, but it does
+not improve every downstream metric in isolation. The current outlier mask is
+the union of intercept and dispersion residual outliers, so changing the
+dispersion target also changes the genes used to smooth the intercept. This is
+evidence to isolate outlier behavior next, not evidence to change the default.
+Both modes pass the original alpha gate.
+
+```bash
+python -m benchmarks.compare_correctness \
+  --fixture benchmark-results/large/fixture.npz \
+  --manifest benchmark-results/large/fixture.selection.json \
+  --r-oracle benchmark-results/large/r-oracle \
+  --reference benchmark-results/large/reference-v0.4.0.npz \
+  --dispersion-regularization sct_v2 \
+  --output benchmark-results/large/correctness-sct-v2.json \
+  --enforce
+```
+

@@ -54,6 +54,12 @@ indices before fitting, and records the algorithm name. Pass a previously serial
 manifest to replay exactly the same cells and genes. The alpha's uniform selection is an
 explicit known difference from the reference density-dependent gene selection.
 
+Dispersion regularization is also explicit. The alpha default remains `native`; use
+`SCTConfig(dispersion_regularization="sct_v2")` to smooth
+`log10(1 + geometric_mean / theta)` and apply its matching inverse transform. This switch
+does not claim full R behavioral compatibility: the estimator, sampling, outlier, and
+smoother contracts remain native.
+
 ## Deliberately unsupported
 
 `return_corrected_umi=True`, `batch=...`, and `covariates=...` raise
