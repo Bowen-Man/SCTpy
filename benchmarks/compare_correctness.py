@@ -390,6 +390,11 @@ def main() -> None:
         "fit_cell_oracle_status": (
             "not_exported" if level_a_fit_cells is None else "available"
         ),
+        "fit_cell_set": (
+            None
+            if level_a_fit_cells is None
+            else named_set_metrics(manifest.selected_cell_names, level_a_fit_cells)
+        ),
         "cross_language_seed_comparison": "not_used; manifest names define selection",
     }
     report = {

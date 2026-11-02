@@ -47,8 +47,9 @@ filtering:
 5. Retain raw integer UMI counts. The SCT `min_cells=5` rule, not an upstream custom
    filter, determines eligible genes.
 6. Run Level A with `set.seed(20261103)`, `n_genes=2000`, and `n_cells=2000`, then freeze
-   its exported named gene/cell selection as the manifest replayed by Levels B and C. The
-   manifest, not an assumption about a cross-language random stream, defines the comparison.
+   its exported ordered gene/cell selection as the manifest replayed by Levels B and C.
+   Order is part of the contract because it defines 500-gene fit bins; the manifest, not
+   an assumption about a cross-language random stream, defines the comparison.
 7. Record the derived sparse matrix hash, ordered-name hashes, shapes, `nnz`, selection
    manifest hash, package versions, and every numerical threshold before inspecting the
    differential result.

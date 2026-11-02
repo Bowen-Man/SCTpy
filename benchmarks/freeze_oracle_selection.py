@@ -35,12 +35,10 @@ def freeze_oracle_selection(
         or not set(fit_cells) <= cell_lookup.keys()
     ):
         raise ValueError("oracle selection contains names absent from the fixture")
-    gene_indices = tuple(sorted(gene_lookup[name] for name in fit_genes))
-    cell_indices = tuple(sorted(cell_lookup[name] for name in fit_cells))
+    gene_indices = tuple(gene_lookup[name] for name in fit_genes)
+    cell_indices = tuple(cell_lookup[name] for name in fit_cells)
     if not gene_indices or len(cell_indices) < 2:
         raise ValueError("oracle selection must contain genes and at least two cells")
-    fit_genes = tuple(genes[index] for index in gene_indices)
-    fit_cells = tuple(cells[index] for index in cell_indices)
     detected = matrix_detection_count(counts[:, cell_indices])
     if any(detected[index] < min_cells for index in gene_indices):
         raise ValueError("oracle selection contains a gene below min_cells")

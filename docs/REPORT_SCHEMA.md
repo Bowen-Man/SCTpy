@@ -26,5 +26,9 @@ a new schema version and an explicit reader branch. Readers must not silently in
 unknown version as version 1. The JSON Schema itself is checked in the normal test suite;
 `jsonschema` is a test-only dependency and does not enter the package runtime.
 
+The selection stage records both named-set agreement and exact order for fit cells. This
+distinction matters when an external oracle returns a random selection order: the set
+proves that the same cells were used, while order can expose a replay difference.
+
 This contract formalizes report transport. Numerical acceptance thresholds remain defined
 separately in [CORRECTNESS.md](CORRECTNESS.md) and `benchmarks/correctness.py`.

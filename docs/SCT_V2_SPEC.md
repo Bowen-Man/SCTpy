@@ -34,9 +34,10 @@ selected_cell_indices, selected_cell_names,
 min_cells, requested_genes, requested_cells
 ```
 
-Callers may supply a complete manifest, in which case no random sampling occurs. Generated
-manifests use NumPy's documented `Generator(PCG64(seed))`; sorted selected indices define
-the execution order. Cells are sampled first. Gene detection is then recomputed within
+Callers may supply a complete manifest, in which case no random sampling occurs and the
+unique index order defines cell traversal and 500-gene fit bins. Generated manifests use
+NumPy's documented `Generator(PCG64(seed))` and sort their selected indices. Cells are
+sampled first. Gene detection is then recomputed within
 those cells without densifying a sparse matrix, and genes below `min_cells` are excluded
 from step-one fitting. Genes whose full-data variance does not exceed their mean are also
 excluded from the fitted-gene pool. If a gene limit remains, sampling probabilities are

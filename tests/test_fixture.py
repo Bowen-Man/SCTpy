@@ -96,7 +96,7 @@ def test_oracle_selection_is_frozen_by_name_in_source_order(tmp_path) -> None:
     )
 
     assert manifest.algorithm == "r_oracle_named_selection_v1"
-    assert manifest.selected_gene_indices == (0, 2)
-    assert manifest.selected_cell_indices == (1, 3, 4)
-    assert manifest.selected_gene_names == ("g0", "g2")
-    assert manifest.selected_cell_names == ("c1", "c3", "c4")
+    assert manifest.selected_gene_indices == (2, 0)
+    assert manifest.selected_cell_indices == (4, 1, 3)
+    assert manifest.selected_gene_names == ("g2", "g0")
+    assert manifest.selected_cell_names == ("c4", "c1", "c3")
