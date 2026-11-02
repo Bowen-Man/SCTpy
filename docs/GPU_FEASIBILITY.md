@@ -2,7 +2,7 @@
 
 Status: narrow feasibility experiment, not an SCT GPU backend.
 
-## Why this operation
+## Why this operation was measured
 
 The 3200 genes x 240 cells CPU benchmark showed median stage time of 5.860 seconds for
 regularization (69.6%), 2.481 seconds for per-gene NB fitting (29.5%), and 0.022 seconds for
@@ -14,6 +14,12 @@ diagonal-in fourth Gaussian derivative functional used by the Sheather--Jones ba
 selector. Both paths use float64, identical blocking, and the same mathematical expression.
 The GPU path is ordinary CuPy elementwise operations plus reductions; it contains no
 custom CUDA, Triton, persistent kernel, asynchronous copy, or double buffering.
+
+This selection was valid for the provisional `nb_mle/native` path. Reprofiling the
+validated `cox_reid/sct_v2/r_stats/clamp/moment_ratio` path changes the decision: on the
+same larger fixture, median fit time is 5.634 seconds, regularization is 0.150 seconds,
+and residuals plus HVG ranking are 0.011 seconds. The SJ primitive is therefore no longer
+the primary migration candidate. **measured on 2026-11-02**
 
 ## Measurement contract
 
@@ -56,19 +62,29 @@ seconds GPU kernel, and 0.002227 seconds GPU end-to-end. Across the two controll
 invocations, the observed ratio is therefore 53.3--59.4x rather than a single universal
 number.
 
-This is strong evidence to prototype this one regularization primitive behind the explicit
-backend boundary. It is not evidence for a 58.9x SCT speedup: the full transform performs
-root-solver orchestration, smoothing, NB fitting, selection, and output construction that
-this microbenchmark intentionally excludes. Results are specific to this fixture and
-machine.
+This is evidence that the isolated regularization primitive maps efficiently to CuPy. It
+is not evidence for a 58.9x SCT speedup and, after validated-path profiling, is not the
+next end-to-end optimization target. Results are specific to this fixture and machine.
+
+## Current candidate
+
+cProfile of the validated path recorded 3,091 per-gene fits, 9,262 Brent root solves, and
+53,675 Cox--Reid score evaluations. The score function is the largest project-owned
+cumulative call path. It operates on one gene's selected-cell vector per evaluation, so
+an isolated experiment must first determine whether genes can be grouped without changing
+independent convergence semantics. Arithmetic intensity, root divergence, launch count,
+and the cost of moving sparse count rows remain **unknown**. No GPU implementation is
+justified until a batched CPU baseline and one transfer-inclusive microbenchmark answer
+those questions.
 
 ## Interpretation boundary
 
 Even a fast result for this primitive would not establish an end-to-end GPU speedup. The
-full SJ selector invokes the functional repeatedly through a root solve, Gaussian smoothing
-also has blocked work, and the NB stage remains thousands of small scalar optimizations.
-An implementation candidate must show that saved compute exceeds transfers, launch costs,
-and additional working memory at a realistic gene count.
+historical SJ selector invokes the functional repeatedly through a root solve, while the
+current path performs thousands of small Cox--Reid root solves. An implementation candidate
+must show that saved compute exceeds transfers, launch costs, and additional working memory
+at a realistic gene count. For the current path this applies to Cox--Reid fitting, not the
+already measured SJ primitive.
 
 RAPIDS-singlecell is not used as an SCT oracle: its documented Pearson-residual
 normalization uses one analytic shared theta and does not implement the v2 fixed-slope,

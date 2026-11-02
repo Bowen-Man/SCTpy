@@ -54,6 +54,29 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--profile", type=Path, required=True)
     parser.add_argument("--block-size", type=int, default=256)
+    parser.add_argument(
+        "--fit-method", choices=("nb_mle", "cox_reid"), default="nb_mle"
+    )
+    parser.add_argument(
+        "--dispersion-regularization",
+        choices=("native", "sct_v2"),
+        default="native",
+    )
+    parser.add_argument(
+        "--regularization-method",
+        choices=("native", "r_stats"),
+        default="native",
+    )
+    parser.add_argument(
+        "--regularization-support",
+        choices=("extrapolate", "clamp"),
+        default="extrapolate",
+    )
+    parser.add_argument(
+        "--theta-postprocess",
+        choices=("none", "moment_ratio"),
+        default="none",
+    )
     args = parser.parse_args()
 
     counts, genes, cells = load_fixture(args.fixture)
@@ -63,6 +86,11 @@ def main() -> None:
         min_cells=5,
         n_genes=None,
         n_cells=None,
+        fit_method=args.fit_method,
+        dispersion_regularization=args.dispersion_regularization,
+        regularization_method=args.regularization_method,
+        regularization_support=args.regularization_support,
+        theta_postprocess=args.theta_postprocess,
         residual_block_size=args.block_size,
     )
     rss_samples = [psutil.Process().memory_info().rss]
@@ -106,6 +134,13 @@ def main() -> None:
     report = {
         "schema_version": 1,
         "generated_on": "2026-11-02",
+        "model": {
+            "fit_method": args.fit_method,
+            "dispersion_regularization": args.dispersion_regularization,
+            "regularization_method": args.regularization_method,
+            "regularization_support": args.regularization_support,
+            "theta_postprocess": args.theta_postprocess,
+        },
         "wall_seconds": wall_seconds,
         "stage_seconds": result.timing,
         "peak_rss_bytes": max(rss_samples),
