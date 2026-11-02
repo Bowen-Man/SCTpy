@@ -58,8 +58,23 @@ explicit known difference from the reference density-dependent gene selection.
 Dispersion regularization is also explicit. The alpha default remains `native`; use
 `SCTConfig(dispersion_regularization="sct_v2")` to smooth
 `log10(1 + geometric_mean / theta)` and apply its matching inverse transform. This switch
-does not claim full R behavioral compatibility: the estimator, sampling, outlier, and
-smoother contracts remain native.
+does not claim full R behavioral compatibility: the estimator and sampling remain native.
+
+Regularization behavior is independently selectable. The default
+`regularization_method="native"` retains the paper-derived alpha implementation. Use
+`regularization_method="r_stats"` for the independently written R `stats` bandwidth,
+normal-kernel smoothing, and abundance-local outlier semantics. A controlled v2 comparison
+therefore uses:
+
+```python
+SCTConfig(
+    dispersion_regularization="sct_v2",
+    regularization_method="r_stats",
+    regularization_support="clamp",
+)
+```
+
+This does not change device placement or add an R dependency.
 
 Kernel predictions use `regularization_support="extrapolate"` by default. Set the policy
 to `"clamp"` to evaluate genes outside the training abundance range at the nearest
@@ -82,12 +97,8 @@ a native research policy, not a claim of estimator-level R compatibility.
 ## Numerical implementation
 
 Per-gene NB2 intercept and theta are fitted by independently derived maximum likelihood
-with analytic gradients and SciPy L-BFGS-B. Regularization uses a Gaussian
-Nadaraya-Watson smoother, the published Sheather--Jones solve-the-equation bandwidth
-selector (multiplied by the configured adjustment), and a recorded 10-MAD outlier rule.
-The derivative-functional sums are evaluated in NumPy blocks so their temporary memory is
-bounded. The smoother's Gaussian scale follows the public `ksmooth` convention: kernel
-quartiles are at `+/- 0.25 * bandwidth`, so its standard deviation is
-`bandwidth / 2.697959...`. These are algorithmic definitions from papers and public API
-contracts; the package does not contain an R-math compatibility layer or claim bit
-identity.
+with analytic gradients and SciPy L-BFGS-B. Both regularization methods are NumPy/SciPy
+code and keep their pair-distance, smoothing, and outlier temporaries one-dimensional.
+The native derivative-functional sums are block bounded. The `r_stats` path uses at most
+1000 distance bins for larger training sets and truncates the normal kernel at four
+standard deviations. The package contains no R-math layer and does not claim bit identity.

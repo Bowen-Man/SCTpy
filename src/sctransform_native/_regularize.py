@@ -12,6 +12,7 @@ _NORMAL_KERNEL_ROUGHNESS = 1.0 / (2.0 * np.sqrt(np.pi))
 _LOG_10 = np.log(10.0)
 
 DispersionRegularization = Literal["native", "sct_v2"]
+RegularizationMethod = Literal["native", "r_stats"]
 RegularizationSupport = Literal["extrapolate", "clamp"]
 
 
@@ -124,6 +125,135 @@ def sheather_jones_bandwidth(x: np.ndarray, *, adjust: float) -> float:
     return float(root * adjust)
 
 
+def _r_stats_pair_counts(
+    x: np.ndarray, *, bins: int = 1000
+) -> tuple[float, np.ndarray]:
+    width = float(np.ptp(x)) * 1.01 / bins
+    if not np.isfinite(width) or width <= 0.0:
+        raise ValueError("x must contain at least two distinct finite values")
+
+    if x.size > bins // 2:
+        locations = np.trunc(np.abs(x) / width) * np.sign(x)
+        locations = locations.astype(np.int64)
+        locations -= np.min(locations)
+        frequencies = np.bincount(locations, minlength=bins)[:bins]
+        counts = np.zeros(bins, dtype=np.float64)
+        counts[0] = np.sum(frequencies * (frequencies - 1), dtype=np.float64) / 2.0
+        last = int(np.max(locations))
+        for lag in range(1, last + 1):
+            counts[lag] = np.dot(frequencies[lag:], frequencies[:-lag])
+        return width, counts
+
+    integer_limit = np.iinfo(np.int32)
+    if np.min(x) / width < integer_limit.min or np.max(x) / width > integer_limit.max:
+        locations = np.trunc((x - np.min(x)) / width).astype(np.int64)
+    else:
+        locations = np.trunc(x / width).astype(np.int64)
+    distances = np.abs(locations[:, None] - locations[None, :])
+    lower_triangle = distances[np.tril_indices(x.size, k=-1)]
+    counts = np.bincount(lower_triangle, minlength=bins)[:bins].astype(np.float64)
+    return width, counts
+
+
+def _r_stats_derivative_functional(
+    counts: np.ndarray,
+    *,
+    sample_size: int,
+    bin_width: float,
+    bandwidth: float,
+    order: int,
+) -> float:
+    squared = (np.arange(counts.size, dtype=np.float64) * bin_width / bandwidth) ** 2
+    keep = squared < 1000.0
+    squared = squared[keep]
+    if order == 4:
+        polynomial = squared**2 - 6.0 * squared + 3.0
+        diagonal = 3.0 * sample_size
+    elif order == 6:
+        polynomial = squared**3 - 15.0 * squared**2 + 45.0 * squared - 15.0
+        diagonal = -15.0 * sample_size
+    else:
+        raise ValueError("only fourth and sixth derivatives are supported")
+    pair_sum = np.sum(
+        np.exp(-0.5 * squared) * polynomial * counts[keep], dtype=np.float64
+    )
+    numerator = 2.0 * pair_sum + diagonal
+    denominator = (
+        sample_size
+        * (sample_size - 1)
+        * bandwidth ** (order + 1)
+        * np.sqrt(2.0 * np.pi)
+    )
+    return float(numerator / denominator)
+
+
+def r_stats_sj_bandwidth(x: np.ndarray, *, adjust: float) -> float:
+    """Return the public ``stats::bw.SJ(method="ste")`` bandwidth semantics."""
+    x = np.asarray(x, dtype=np.float64)
+    if x.ndim != 1:
+        raise ValueError("x must be one-dimensional")
+    if x.size < 3 or not np.all(np.isfinite(x)) or np.ptp(x) <= 0.0:
+        return robust_bandwidth(x, adjust=adjust)
+
+    n = x.size
+    q25, q75 = np.percentile(x, [25.0, 75.0])
+    scale = min(float(np.std(x, ddof=1)), float((q75 - q25) / 1.349))
+    if not np.isfinite(scale) or scale <= 0.0:
+        return robust_bandwidth(x, adjust=adjust)
+
+    bin_width, counts = _r_stats_pair_counts(x)
+
+    def functional(bandwidth: float, order: int) -> float:
+        return _r_stats_derivative_functional(
+            counts,
+            sample_size=n,
+            bin_width=bin_width,
+            bandwidth=bandwidth,
+            order=order,
+        )
+
+    pilot_a = 1.24 * scale * n ** (-1.0 / 7.0)
+    pilot_b = 1.23 * scale * n ** (-1.0 / 9.0)
+    third_derivative = -functional(pilot_b, 6)
+    second_derivative = functional(pilot_a, 4)
+    if third_derivative <= 0.0 or second_derivative <= 0.0:
+        return robust_bandwidth(x, adjust=adjust)
+
+    alpha = 1.357 * (second_derivative / third_derivative) ** (1.0 / 7.0)
+    constant = 1.0 / (2.0 * np.sqrt(np.pi) * n)
+
+    def equation(bandwidth: float) -> float:
+        roughness = functional(alpha * bandwidth ** (5.0 / 7.0), 4)
+        if not np.isfinite(roughness) or roughness <= 0.0:
+            return np.inf
+        return float((constant / roughness) ** 0.2 - bandwidth)
+
+    upper = 1.144 * scale * n ** (-0.2)
+    lower = 0.1 * upper
+    lower_value = equation(lower)
+    upper_value = equation(upper)
+    for attempt in range(1, 100):
+        if np.signbit(lower_value) != np.signbit(upper_value):
+            break
+        if attempt % 2:
+            upper *= 1.2
+            upper_value = equation(upper)
+        else:
+            lower /= 1.2
+            lower_value = equation(lower)
+    else:
+        return robust_bandwidth(x, adjust=adjust)
+
+    root = brentq(
+        equation,
+        lower,
+        upper,
+        xtol=max(0.1 * lower, np.finfo(np.float64).eps),
+        rtol=4.0 * np.finfo(np.float64).eps,
+    )
+    return float(root * adjust)
+
+
 def robust_bandwidth(x: np.ndarray, *, adjust: float) -> float:
     """Silverman-style robust bandwidth for a Gaussian kernel smoother."""
     if x.size < 2:
@@ -160,12 +290,75 @@ def gaussian_nadaraya_watson(
     return output
 
 
+def r_stats_ksmooth_normal(
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_predict: np.ndarray,
+    *,
+    bandwidth: float,
+) -> np.ndarray:
+    """Evaluate the public normal-kernel ``stats::ksmooth`` convention."""
+    if not np.isfinite(bandwidth) or bandwidth <= 0.0:
+        raise ValueError("bandwidth must be finite and positive")
+    order = np.argsort(x_train, kind="stable")
+    x_sorted = np.asarray(x_train, dtype=np.float64)[order]
+    y_sorted = np.asarray(y_train, dtype=np.float64)[order]
+    sigma = bandwidth * 0.3706506
+    cutoff = 4.0 * sigma
+    output = np.empty_like(x_predict, dtype=np.float64)
+    for index, point in enumerate(x_predict):
+        start = int(np.searchsorted(x_sorted, point - cutoff, side="left"))
+        stop = int(np.searchsorted(x_sorted, point + cutoff, side="right"))
+        if start == stop:
+            output[index] = np.nan
+            continue
+        distance = (x_sorted[start:stop] - point) / sigma
+        weights = np.exp(-0.5 * distance**2)
+        output[index] = np.dot(weights, y_sorted[start:stop]) / np.sum(weights)
+    return output
+
+
 def _mad_outliers(residual: np.ndarray, *, threshold: float) -> np.ndarray:
     center = float(np.median(residual))
     scale = 1.4826 * float(np.median(np.abs(residual - center)))
     if not np.isfinite(scale) or scale <= np.finfo(np.float64).eps:
         return np.zeros(residual.shape, dtype=bool)
     return np.abs(residual - center) > threshold * scale
+
+
+def _robust_scale_by_bin(
+    values: np.ndarray, coordinates: np.ndarray, breaks: np.ndarray
+) -> np.ndarray:
+    bin_index = np.searchsorted(breaks, coordinates, side="left") - 1
+    scores = np.zeros(values.shape, dtype=np.float64)
+    for index in np.unique(bin_index):
+        members = bin_index == index
+        local = values[members]
+        center = float(np.median(local))
+        scale = 1.4826 * float(np.median(np.abs(local - center)))
+        scores[members] = (local - center) / (scale + np.finfo(np.float64).eps)
+    return scores
+
+
+def r_stats_binned_outliers(
+    coordinates: np.ndarray,
+    values: np.ndarray,
+    *,
+    threshold: float,
+) -> np.ndarray:
+    """Apply the two-grid, abundance-local robust-score outlier rule."""
+    base_bandwidth = r_stats_sj_bandwidth(coordinates, adjust=1.0)
+    bin_width = float(np.ptp(coordinates)) * base_bandwidth / 2.0
+    if not np.isfinite(bin_width) or bin_width <= 0.0:
+        return np.zeros(values.shape, dtype=bool)
+    epsilon = 10.0 * np.finfo(np.float64).eps
+    low = float(np.min(coordinates)) - epsilon
+    high = float(np.max(coordinates)) + bin_width
+    first_breaks = np.arange(low, high + epsilon, bin_width)
+    second_breaks = np.arange(low - bin_width / 2.0, high + epsilon, bin_width)
+    first = _robust_scale_by_bin(values, coordinates, first_breaks)
+    second = _robust_scale_by_bin(values, coordinates, second_breaks)
+    return np.minimum(np.abs(first), np.abs(second)) > threshold
 
 
 def _dispersion_target(
@@ -225,6 +418,7 @@ def regularize_parameters(
     theta_min: float,
     theta_max: float,
     dispersion_regularization: DispersionRegularization,
+    regularization_method: RegularizationMethod,
     regularization_support: RegularizationSupport,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     train_indices = np.flatnonzero(training_mask)
@@ -240,25 +434,38 @@ def regularize_parameters(
         raw_theta[train_indices],
         mode=dispersion_regularization,
     )
-    bandwidth = sheather_jones_bandwidth(x_train, adjust=bandwidth_adjust)
+    if regularization_method == "native":
+        bandwidth_selector = sheather_jones_bandwidth
+        smoother = gaussian_nadaraya_watson
+    elif regularization_method == "r_stats":
+        bandwidth_selector = r_stats_sj_bandwidth
+        smoother = r_stats_ksmooth_normal
+    else:
+        raise ValueError(f"unknown regularization method: {regularization_method}")
+    bandwidth = bandwidth_selector(x_train, adjust=bandwidth_adjust)
 
     outlier = np.zeros(raw_intercept.shape, dtype=bool)
     if train_indices.size >= 4:
-        initial_intercept = gaussian_nadaraya_watson(
-            x_train, intercept_train, x_train, bandwidth=bandwidth
-        )
-        initial_od = gaussian_nadaraya_watson(
-            x_train, od_train, x_train, bandwidth=bandwidth
-        )
-        local_outlier = _mad_outliers(
-            intercept_train - initial_intercept, threshold=outlier_mad_threshold
-        ) | _mad_outliers(od_train - initial_od, threshold=outlier_mad_threshold)
+        if regularization_method == "r_stats":
+            local_outlier = r_stats_binned_outliers(
+                x_train, intercept_train, threshold=outlier_mad_threshold
+            ) | r_stats_binned_outliers(
+                x_train, od_train, threshold=outlier_mad_threshold
+            )
+        else:
+            initial_intercept = smoother(
+                x_train, intercept_train, x_train, bandwidth=bandwidth
+            )
+            initial_od = smoother(x_train, od_train, x_train, bandwidth=bandwidth)
+            local_outlier = _mad_outliers(
+                intercept_train - initial_intercept, threshold=outlier_mad_threshold
+            ) | _mad_outliers(od_train - initial_od, threshold=outlier_mad_threshold)
         if np.count_nonzero(~local_outlier) >= 3:
             outlier[train_indices[local_outlier]] = True
             x_train = x_train[~local_outlier]
             intercept_train = intercept_train[~local_outlier]
             od_train = od_train[~local_outlier]
-            bandwidth = sheather_jones_bandwidth(x_train, adjust=bandwidth_adjust)
+            bandwidth = bandwidth_selector(x_train, adjust=bandwidth_adjust)
 
     x_predict = np.log10(
         np.maximum(geometric_mean[predict_indices], np.finfo(float).tiny)
@@ -268,12 +475,10 @@ def regularize_parameters(
     )
     regularized_intercept = np.full(raw_intercept.shape, np.nan, dtype=np.float64)
     regularized_theta = np.full(raw_theta.shape, np.nan, dtype=np.float64)
-    regularized_intercept[predict_indices] = gaussian_nadaraya_watson(
+    regularized_intercept[predict_indices] = smoother(
         x_train, intercept_train, x_predict, bandwidth=bandwidth
     )
-    od_predict = gaussian_nadaraya_watson(
-        x_train, od_train, x_predict, bandwidth=bandwidth
-    )
+    od_predict = smoother(x_train, od_train, x_predict, bandwidth=bandwidth)
     theta = _theta_from_dispersion(
         gene_mean[predict_indices],
         geometric_mean[predict_indices],

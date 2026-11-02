@@ -23,6 +23,7 @@ from ._matrix import (
 )
 from ._regularize import (
     DispersionRegularization,
+    RegularizationMethod,
     RegularizationSupport,
     regularize_parameters,
 )
@@ -43,6 +44,7 @@ class SCTConfig:
     bandwidth_adjust: float = 3.0
     outlier_mad_threshold: float = 10.0
     dispersion_regularization: DispersionRegularization = "native"
+    regularization_method: RegularizationMethod = "native"
     regularization_support: RegularizationSupport = "extrapolate"
     theta_postprocess: ThetaPostprocess = "none"
     theta_moment_ratio_threshold: float = 1.0e-3
@@ -66,6 +68,8 @@ class SCTConfig:
             raise ValueError("outlier_mad_threshold must be positive")
         if self.dispersion_regularization not in {"native", "sct_v2"}:
             raise ValueError("dispersion_regularization must be 'native' or 'sct_v2'")
+        if self.regularization_method not in {"native", "r_stats"}:
+            raise ValueError("regularization_method must be 'native' or 'r_stats'")
         if self.regularization_support not in {"extrapolate", "clamp"}:
             raise ValueError("regularization_support must be 'extrapolate' or 'clamp'")
         if self.theta_postprocess not in {"none", "moment_ratio"}:
@@ -334,6 +338,7 @@ def fit_transform(
             theta_min=resolved_config.theta_min,
             theta_max=resolved_config.theta_max,
             dispersion_regularization=resolved_config.dispersion_regularization,
+            regularization_method=resolved_config.regularization_method,
             regularization_support=resolved_config.regularization_support,
         )
         parameter_outlier |= smoother_outlier | theta_postprocessed
