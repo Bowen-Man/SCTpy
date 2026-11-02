@@ -93,13 +93,13 @@ def matrix_statistics(
         squared = counts_gxc.copy()
         squared.data **= 2
         sum_squares = np.asarray(squared.sum(axis=1), dtype=np.float64).ravel()
-        detected = np.asarray(counts_gxc.getnnz(axis=1), dtype=np.int64)
+        detected = matrix_detection_count(counts_gxc)
         log_matrix = counts_gxc.copy().astype(np.float64)
         log_matrix.data = np.log1p(log_matrix.data)
         log_sums = np.asarray(log_matrix.sum(axis=1), dtype=np.float64).ravel()
     else:
         sum_squares = np.einsum("gc,gc->g", counts_gxc, counts_gxc)
-        detected = np.count_nonzero(counts_gxc, axis=1).astype(np.int64)
+        detected = matrix_detection_count(counts_gxc)
         log_sums = np.log1p(counts_gxc).sum(axis=1)
 
     if n_cells > 1:
@@ -109,6 +109,13 @@ def matrix_statistics(
         variances = np.zeros_like(means)
     geometric_means = np.expm1(log_sums / n_cells)
     return means, variances, detected, geometric_means
+
+
+def matrix_detection_count(counts_gxc: CountMatrix) -> np.ndarray:
+    """Count detected cells per gene without densifying a sparse matrix."""
+    if sparse.issparse(counts_gxc):
+        return np.asarray(counts_gxc.getnnz(axis=1), dtype=np.int64)
+    return np.count_nonzero(counts_gxc, axis=1).astype(np.int64)
 
 
 def global_nonzero_median(counts_gxc: CountMatrix) -> float:

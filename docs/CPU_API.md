@@ -50,10 +50,13 @@ parameters/residuals, and HVG rank `-1`. Failed NB fits are named in `fit_status
 excluded from the smoother training data; if a curve can be learned from other genes, the
 failed gene receives a visibly labelled regularized prediction.
 
-The default selection uses `Generator(PCG64(seed))`, samples without replacement, sorts
-indices before fitting, and records the algorithm name. Pass a previously serialized
-manifest to replay exactly the same cells and genes. The alpha's uniform selection is an
-explicit known difference from the reference density-dependent gene selection.
+The default selection uses `Generator(PCG64(seed))` and samples cells without replacement.
+It recomputes per-gene detection on the selected columns in sparse form, excludes
+genes with full-data variance not exceeding their mean from step-one fitting, and uses
+inverse abundance-density weights when `n_genes` truncates the remaining pool. Indices are
+sorted before fitting and the manifest records `sct_v2_inverse_density_pcg64_v1`. Pass a
+serialized manifest to replay exactly the same cells and genes. NumPy and R RNG streams
+are intentionally not treated as identical.
 
 Raw fitting is explicit. `fit_method="nb_mle"` remains the alpha default. The optional
 `fit_method="cox_reid"` uses per-gene Cox--Reid adjusted dispersion estimates followed by

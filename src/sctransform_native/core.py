@@ -234,14 +234,18 @@ def fit_transform(
     eligible = detection_count >= resolved_config.min_cells
     if not np.any(eligible):
         raise ValueError("no genes satisfy min_cells")
+    step1_candidate = eligible & (gene_variance > gene_mean)
+    poisson_gene = eligible & ((gene_mean < 0.001) | (gene_variance <= gene_mean))
     timing["input_statistics"] = perf_counter() - stage_start
 
     stage_start = perf_counter()
     if selection is None:
         selection = create_selection_manifest(
+            counts_gxc=counts_gxc,
             gene_names=checked_genes,
             cell_names=checked_cells,
-            eligible_genes=eligible,
+            eligible_genes=step1_candidate,
+            geometric_mean=geometric_mean,
             min_cells=resolved_config.min_cells,
             requested_genes=resolved_config.n_genes,
             requested_cells=resolved_config.n_cells,
@@ -260,10 +264,12 @@ def fit_transform(
     selected_cells = np.asarray(selection.selected_cell_indices, dtype=np.int64)
     selected_gene_mask = np.zeros(genes, dtype=bool)
     selected_gene_mask[selected_genes] = True
+    if np.any(eligible & ~poisson_gene) and not np.any(
+        selected_gene_mask & ~poisson_gene
+    ):
+        raise ValueError("selection must include at least one non-Poisson gene")
     fit_counts = counts_gxc[:, selected_cells]
     fit_library_size = library_size[selected_cells]
-    fit_mean, fit_variance, _, _ = matrix_statistics(fit_counts)
-    poisson_gene = eligible & ((fit_mean < 0.001) | (fit_variance <= fit_mean))
 
     raw_intercept = np.full(genes, np.nan, dtype=np.float64)
     raw_theta = np.full(genes, np.nan, dtype=np.float64)
@@ -272,17 +278,19 @@ def fit_transform(
     fit_iterations = np.zeros(genes, dtype=np.int64)
     fit_message = np.full(genes, "not fit", dtype=object)
     status = np.full(genes, "insufficient_cells", dtype=object)
+    poisson_intercept = np.full(genes, np.nan, dtype=np.float64)
 
     stage_start = perf_counter()
     for gene_index in np.flatnonzero(eligible & poisson_gene):
-        y = dense_gene_row(fit_counts, int(gene_index))
-        raw_intercept[gene_index] = poisson_offset_intercept(y, fit_library_size)
+        y = dense_gene_row(counts_gxc, int(gene_index))
+        poisson_intercept[gene_index] = poisson_offset_intercept(y, library_size)
+        raw_intercept[gene_index] = poisson_intercept[gene_index]
         raw_theta[gene_index] = np.inf
         fit_message[gene_index] = "analytic Poisson offset"
         status[gene_index] = "poisson"
 
     for gene_index in selected_genes:
-        if poisson_gene[gene_index]:
+        if not step1_candidate[gene_index]:
             continue
         y = dense_gene_row(fit_counts, int(gene_index))
         if resolved_config.fit_method == "cox_reid":
@@ -306,7 +314,7 @@ def fit_transform(
         status[gene_index] = "fit" if gene_fit.converged else "fit_failed"
 
     if resolved_config.fit_method == "cox_reid":
-        fitted = np.flatnonzero(selected_gene_mask & ~poisson_gene & converged)
+        fitted = np.flatnonzero(selected_gene_mask & step1_candidate & converged)
         raw_dispersion = np.zeros(fitted.size, dtype=np.float64)
         finite_theta = np.isfinite(raw_theta[fitted])
         raw_dispersion[finite_theta] = 1.0 / raw_theta[fitted[finite_theta]]
@@ -329,11 +337,11 @@ def fit_transform(
     theta_postprocessed = np.zeros(genes, dtype=bool)
     if resolved_config.theta_postprocess == "moment_ratio":
         candidates = np.flatnonzero(
-            eligible & selected_gene_mask & ~poisson_gene & ~np.isnan(raw_theta)
+            step1_candidate & selected_gene_mask & ~np.isnan(raw_theta)
         )
         theta_postprocessed[candidates] = theta_moment_ratio_mask(
-            fit_mean[candidates],
-            fit_variance[candidates],
+            gene_mean[candidates],
+            gene_variance[candidates],
             raw_theta[candidates],
             threshold=resolved_config.theta_moment_ratio_threshold,
         )
@@ -363,7 +371,7 @@ def fit_transform(
             smoother_outlier,
             bandwidth,
         ) = regularize_parameters(
-            gene_mean=fit_mean,
+            gene_mean=gene_mean,
             geometric_mean=geometric_mean,
             raw_intercept=raw_intercept,
             raw_theta=raw_theta,
@@ -387,7 +395,7 @@ def fit_transform(
             status[gene_index] = "regularized_after_fit_failure"
 
     for gene_index in np.flatnonzero(eligible & poisson_gene):
-        regularized_intercept[gene_index] = raw_intercept[gene_index]
+        regularized_intercept[gene_index] = poisson_intercept[gene_index]
         regularized_theta[gene_index] = np.inf
     timing["regularization"] = perf_counter() - stage_start
 
