@@ -73,7 +73,8 @@ pseudocount of 1. V2 documentation calls the theta target `od_factor`; under NB2
 dimensionless extra-Poisson factor is `m_g / theta_g`. The alpha therefore defines:
 
 ```text
-x_g = log10(geometric_mean(X_g + 1))
+gmean_g = exp(mean_c(log(X_gc + 1))) - 1
+x_g = log10(max(gmean_g, smallest_positive_float64))
 od_g = log10(m_g / theta_g)
 ```
 
@@ -95,13 +96,16 @@ Using regularized parameters:
 ```text
 mu_gc = exp(beta_fit_g0 + log(n_c))
 model_sd_gc = sqrt(mu_gc + mu_gc**2 / theta_fit_g)
-floor_g = median({X_gc | X_gc > 0}) / 5
-denom_gc = max(model_sd_gc, floor_g)
+floor = median({X_gc | X_gc > 0, over the count matrix}) / 5
+denom_gc = max(model_sd_gc, floor)
 Z_gc = (X_gc - mu_gc) / denom_gc
 ```
 
-For genes with no nonzero counts, `floor_g = 0`. **confirmed from paper** except that
-explicit empty-set behavior is a **project decision**.
+The official public helper documentation defines `nzmedian` as the median of non-zero
+entries in the UMI matrix (optionally over a named gene set), so the alpha uses one scalar
+floor for the run. If the matrix has no nonzero counts, `floor = 0`; positive cell-library
+validation normally makes that case unreachable. **confirmed from paper and official
+documentation** except that explicit empty-set behavior is a **project decision**.
 
 Residual clipping is explicit. The low-level native default is
 `[-sqrt(C), +sqrt(C)]`, matching the public low-level documentation. An AnnData/Seurat-like

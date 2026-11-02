@@ -16,17 +16,35 @@ Current version: `0.1.0a1`.
 
 ## Status
 
-The repository bootstrap and independent specification are available. CPU model fitting,
-differential validation, profiling, and any GPU experiment are introduced in separate,
-reviewable pull requests. Corrected UMI counts, batch models, and extra covariates are out
-of scope until their contracts are independently verified.
+The independent specification and NumPy/SciPy CPU alpha are available. Differential
+validation, profiling, and any GPU experiment are introduced in separate, reviewable pull
+requests. Corrected UMI counts, batch models, and extra covariates are out of scope until
+their contracts are independently verified.
 
 See:
 
 - [implementation survey](docs/IMPLEMENTATION_SURVEY.md)
 - [SCT v2 contract](docs/SCT_V2_SPEC.md)
+- [CPU alpha API](docs/CPU_API.md)
 - [licensing rationale](docs/LICENSING.md)
 - [RAPIDS integration boundary](docs/RAPIDS_INTEGRATION.md)
+
+## CPU quickstart
+
+```python
+from sctransform_native import SCTConfig, fit_transform
+
+result = fit_transform(
+    counts_genes_by_cells,
+    gene_names=gene_names,
+    cell_names=cell_names,
+    matrix_orientation="genes_by_cells",
+    config=SCTConfig(seed=1448145),
+)
+
+residuals = result.residuals
+hvg_2000 = result.highly_variable_genes(2000)
+```
 
 ## Development
 
