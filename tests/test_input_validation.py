@@ -65,6 +65,11 @@ def test_unknown_dispersion_regularization_is_rejected() -> None:
         SCTConfig(dispersion_regularization="unknown")  # type: ignore[arg-type]
 
 
+def test_unknown_regularization_support_is_rejected() -> None:
+    with pytest.raises(ValueError, match="regularization_support"):
+        SCTConfig(regularization_support="unknown")  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     ("keyword", "message"),
     [

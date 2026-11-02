@@ -60,6 +60,11 @@ Dispersion regularization is also explicit. The alpha default remains `native`; 
 does not claim full R behavioral compatibility: the estimator, sampling, outlier, and
 smoother contracts remain native.
 
+Kernel predictions use `regularization_support="extrapolate"` by default. Set the policy
+to `"clamp"` to evaluate genes outside the training abundance range at the nearest
+training boundary. Device placement and matrix orientation are unaffected by this scalar
+coordinate policy.
+
 ## Deliberately unsupported
 
 `return_corrected_umi=True`, `batch=...`, and `covariates=...` raise

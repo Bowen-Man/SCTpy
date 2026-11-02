@@ -173,6 +173,7 @@ def native_result(
     manifest_path: Path,
     *,
     dispersion_regularization: str = "native",
+    regularization_support: str = "extrapolate",
 ) -> tuple[dict[str, Any], dict[str, float]]:
     counts, genes, cells = load_fixture(fixture)
     manifest = load_manifest(manifest_path)
@@ -185,6 +186,7 @@ def native_result(
             n_genes=None,
             n_cells=None,
             dispersion_regularization=dispersion_regularization,
+            regularization_support=regularization_support,
         ),
         selection=manifest,
     )
@@ -251,6 +253,11 @@ def main() -> None:
         choices=("native", "sct_v2"),
         default="native",
     )
+    parser.add_argument(
+        "--regularization-support",
+        choices=("extrapolate", "clamp"),
+        default="extrapolate",
+    )
     parser.add_argument("--enforce", action="store_true")
     args = parser.parse_args()
 
@@ -260,11 +267,13 @@ def main() -> None:
         args.fixture,
         args.manifest,
         dispersion_regularization=args.dispersion_regularization,
+        regularization_support=args.regularization_support,
     )
     report = {
         "schema_version": 1,
         "generated_on": "2026-11-02",
         "dispersion_regularization": args.dispersion_regularization,
+        "regularization_support": args.regularization_support,
         "theta_moment_ratio_threshold": THETA_MOMENT_RATIO_THRESHOLD,
         "thresholds_preregistered": THRESHOLDS,
         "level_b_vs_level_a": compare_pair(level_b, level_a),

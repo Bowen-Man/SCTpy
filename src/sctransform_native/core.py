@@ -16,7 +16,11 @@ from ._matrix import (
     matrix_statistics,
     prepare_counts,
 )
-from ._regularize import DispersionRegularization, regularize_parameters
+from ._regularize import (
+    DispersionRegularization,
+    RegularizationSupport,
+    regularize_parameters,
+)
 from .selection import (
     SelectionManifest,
     create_selection_manifest,
@@ -34,6 +38,7 @@ class SCTConfig:
     bandwidth_adjust: float = 3.0
     outlier_mad_threshold: float = 10.0
     dispersion_regularization: DispersionRegularization = "native"
+    regularization_support: RegularizationSupport = "extrapolate"
     theta_min: float = 1e-4
     theta_max: float = 1e8
     optimizer_maxiter: int = 200
@@ -54,6 +59,8 @@ class SCTConfig:
             raise ValueError("outlier_mad_threshold must be positive")
         if self.dispersion_regularization not in {"native", "sct_v2"}:
             raise ValueError("dispersion_regularization must be 'native' or 'sct_v2'")
+        if self.regularization_support not in {"extrapolate", "clamp"}:
+            raise ValueError("regularization_support must be 'extrapolate' or 'clamp'")
         if not 0 < self.theta_min < self.theta_max:
             raise ValueError("theta bounds must satisfy 0 < theta_min < theta_max")
         if self.optimizer_maxiter < 1 or self.residual_block_size < 1:
@@ -295,6 +302,7 @@ def fit_transform(
             theta_min=resolved_config.theta_min,
             theta_max=resolved_config.theta_max,
             dispersion_regularization=resolved_config.dispersion_regularization,
+            regularization_support=resolved_config.regularization_support,
         )
         regularized_intercept[non_poisson] = predicted_intercept[non_poisson]
         regularized_theta[non_poisson] = predicted_theta[non_poisson]

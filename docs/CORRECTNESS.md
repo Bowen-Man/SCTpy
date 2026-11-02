@@ -184,3 +184,13 @@ that a moment-to-fit ratio explains most of the branch difference. It is not
 an exact match because the native and oracle estimators are different, and the
 diagnostic is not yet a core postprocessing policy.
 
+## Regularization support A/B
+
+The kernel prediction policy is exposed as `extrapolate` or `clamp`, with
+`extrapolate` preserving the alpha default. On the larger fixed-manifest
+fixture, clamping changes no reported value under either the `native` or
+`sct_v2` dispersion transform: all prediction coordinates already lie inside
+the retained training support. This zero effect is recorded rather than
+generalized; datasets with abundance values outside the post-outlier training
+range can exercise the explicit boundary policy.
+
