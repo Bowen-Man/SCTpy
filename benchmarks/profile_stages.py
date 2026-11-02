@@ -57,6 +57,7 @@ def main() -> None:
     parser.add_argument(
         "--fit-method", choices=("nb_mle", "cox_reid"), default="nb_mle"
     )
+    parser.add_argument("--cox-reid-gene-bin-size", type=int)
     parser.add_argument(
         "--dispersion-regularization",
         choices=("native", "sct_v2"),
@@ -87,6 +88,7 @@ def main() -> None:
         n_genes=None,
         n_cells=None,
         fit_method=args.fit_method,
+        cox_reid_gene_bin_size=args.cox_reid_gene_bin_size,
         dispersion_regularization=args.dispersion_regularization,
         regularization_method=args.regularization_method,
         regularization_support=args.regularization_support,
@@ -136,6 +138,7 @@ def main() -> None:
         "generated_on": "2026-11-02",
         "model": {
             "fit_method": args.fit_method,
+            "cox_reid_gene_bin_size": args.cox_reid_gene_bin_size,
             "dispersion_regularization": args.dispersion_regularization,
             "regularization_method": args.regularization_method,
             "regularization_support": args.regularization_support,

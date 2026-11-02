@@ -51,6 +51,7 @@ def _worker(
     input_format: str,
     *,
     fit_method: str,
+    cox_reid_gene_bin_size: int | None,
     dispersion_regularization: str,
     regularization_method: str,
     regularization_support: str,
@@ -86,6 +87,7 @@ def _worker(
             n_genes=None,
             n_cells=None,
             fit_method=fit_method,
+            cox_reid_gene_bin_size=cox_reid_gene_bin_size,
             dispersion_regularization=dispersion_regularization,
             regularization_method=regularization_method,
             regularization_support=regularization_support,
@@ -177,6 +179,7 @@ def main() -> None:
     parser.add_argument(
         "--fit-method", choices=("nb_mle", "cox_reid"), default="nb_mle"
     )
+    parser.add_argument("--cox-reid-gene-bin-size", type=int)
     parser.add_argument(
         "--dispersion-regularization",
         choices=("native", "sct_v2"),
@@ -208,6 +211,7 @@ def main() -> None:
                     args.manifest,
                     args.input_format,
                     fit_method=args.fit_method,
+                    cox_reid_gene_bin_size=args.cox_reid_gene_bin_size,
                     dispersion_regularization=args.dispersion_regularization,
                     regularization_method=args.regularization_method,
                     regularization_support=args.regularization_support,
@@ -247,6 +251,8 @@ def main() -> None:
         "--theta-postprocess",
         args.theta_postprocess,
     ]
+    if args.cox_reid_gene_bin_size is not None:
+        command.extend(["--cox-reid-gene-bin-size", str(args.cox_reid_gene_bin_size)])
     if args.trace_python_allocations:
         command.append("--trace-python-allocations")
     for index in range(args.warmups + args.repeats):
@@ -279,6 +285,7 @@ def main() -> None:
         },
         "model": {
             "fit_method": args.fit_method,
+            "cox_reid_gene_bin_size": args.cox_reid_gene_bin_size,
             "dispersion_regularization": args.dispersion_regularization,
             "regularization_method": args.regularization_method,
             "regularization_support": args.regularization_support,

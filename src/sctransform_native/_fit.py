@@ -398,11 +398,25 @@ def local_median_dispersion_trend(
     dispersion: np.ndarray,
     *,
     points: float | None = None,
+    gene_bin_size: int | None = None,
 ) -> np.ndarray:
     """Fit the abundance-local weighted-median dispersion trend."""
     size = abundance.size
     if size == 0:
         return np.empty(0, dtype=np.float64)
+    if gene_bin_size is not None:
+        if gene_bin_size < 1:
+            raise ValueError("gene_bin_size must be positive or None")
+        if size > gene_bin_size:
+            output = np.empty(size, dtype=np.float64)
+            for start in range(0, size, gene_bin_size):
+                stop = min(start + gene_bin_size, size)
+                output[start:stop] = local_median_dispersion_trend(
+                    abundance[start:stop],
+                    dispersion[start:stop],
+                    points=points,
+                )
+            return output
     points = max(100.0, 0.1 * size) if points is None else points
     points = min(size, max(1.0, points))
     half = int(np.floor(points / 2.0))

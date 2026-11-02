@@ -26,23 +26,29 @@ Input is CSR; the retained residual output is dense float64.
 The current correctness path is explicit:
 
 ```text
-cox_reid / sct_v2 / r_stats / clamp / moment_ratio
+cox_reid / gene_bin_500 / sct_v2 / r_stats / clamp / moment_ratio
 ```
 
 | Fixture | Median compute wall | Median process CPU | Median peak RSS | Median RSS growth | Budget |
 |---|---:|---:|---:|---:|---|
-| 800 x 240 | 1.523 s | 1.547 s | 79.96 MiB | 8.76 MiB | 60 s / 2 GiB |
-| 3200 x 240 | 5.855 s | 5.922 s | 105.98 MiB | 34.98 MiB | 180 s / 4 GiB |
+| 800 x 240 | 1.266 s | 1.297 s | 80.00 MiB | 8.68 MiB | 60 s / 2 GiB |
+| 3200 x 240 | 5.249 s | 5.422 s | 108.79 MiB | 37.53 MiB | 180 s / 4 GiB |
 
 Median uninstrumented stage timers:
 
 | Fixture | Fit | Regularization | Residuals + HVG | Total |
 |---|---:|---:|---:|---:|
-| 800 x 240 | 1.459 s | 0.0336 s | 0.0042 s | 1.523 s |
-| 3200 x 240 | 5.634 s | 0.1501 s | 0.0113 s | 5.854 s |
+| 800 x 240 | 1.213 s | 0.0330 s | 0.0025 s | 1.265 s |
+| 3200 x 240 | 4.993 s | 0.1342 s | 0.0263 s | 5.248 s |
 
-On the larger fixture, Cox--Reid fitting is about 96.2% of stage time;
-regularization is about 2.6%, and residual construction plus HVG ranking is about 0.2%.
+In a same-session five-run A/B on the larger fixture, the previous all-gene trend and the
+500-gene compatibility trend had median compute times of 5.268 s and 5.249 s. Their
+per-run sampled RSS ranges overlapped; the respective median peaks were 101.98 MiB and
+108.79 MiB. This is insufficient evidence for either a speedup or a memory regression,
+so the bin change is accepted only for correctness. **measured**
+
+On the larger fixture, Cox--Reid fitting is about 95.1% of stage time;
+regularization is about 2.6%, and residual construction plus HVG ranking is about 0.5%.
 cProfile recorded 3,091 per-gene fits, 9,262 Brent root solves, and 53,675 evaluations of
 the Cox--Reid score. The score function was the largest project-owned cumulative call
 path. Call tracing raised wall time to 14.08 seconds, so these counts identify structure
@@ -80,7 +86,7 @@ roughly five block-sized arrays can coexist and are released after each gene blo
 
 In the validated path, a Cox--Reid score evaluation operates on one dense 240-cell gene
 row at a time. The row and its temporary vectors are released between genes; no dense
-genes-by-genes or genes-by-cells fitting workspace is retained. The measured 34.98 MiB
+genes-by-genes or genes-by-cells fitting workspace is retained. The measured 37.53 MiB
 median RSS growth includes these working vectors, SciPy state, and the dense result.
 
 In the provisional native path, the SJ derivative calculation is blocked at 256 training
@@ -112,6 +118,6 @@ See [GPU_FEASIBILITY.md](GPU_FEASIBILITY.md).
 ## Reproduction
 
 ```bash
-python -m benchmarks.run_baseline --fixture benchmark-results/large/fixture.npz --manifest benchmark-results/large/fixture.selection.json --output benchmark-results/large/baseline-v2.json --warmups 1 --repeats 5 --threads 1 --time-budget-seconds 180 --memory-budget-mib 4096 --fit-method cox_reid --dispersion-regularization sct_v2 --regularization-method r_stats --regularization-support clamp --theta-postprocess moment_ratio
-python -m benchmarks.profile_stages --fixture benchmark-results/large/fixture.npz --manifest benchmark-results/large/fixture.selection.json --output benchmark-results/large/profile-v2.json --profile benchmark-results/large/profile-v2.prof --fit-method cox_reid --dispersion-regularization sct_v2 --regularization-method r_stats --regularization-support clamp --theta-postprocess moment_ratio
+python -m benchmarks.run_baseline --fixture benchmark-results/large/fixture.npz --manifest benchmark-results/large/fixture.selection.json --output benchmark-results/large/baseline-v2.json --warmups 1 --repeats 5 --threads 1 --time-budget-seconds 180 --memory-budget-mib 4096 --fit-method cox_reid --cox-reid-gene-bin-size 500 --dispersion-regularization sct_v2 --regularization-method r_stats --regularization-support clamp --theta-postprocess moment_ratio
+python -m benchmarks.profile_stages --fixture benchmark-results/large/fixture.npz --manifest benchmark-results/large/fixture.selection.json --output benchmark-results/large/profile-v2.json --profile benchmark-results/large/profile-v2.prof --fit-method cox_reid --cox-reid-gene-bin-size 500 --dispersion-regularization sct_v2 --regularization-method r_stats --regularization-support clamp --theta-postprocess moment_ratio
 ```

@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from sctransform_native._fit import (
     fit_cox_reid_offset,
@@ -104,6 +105,24 @@ def test_local_median_trend_matches_external_golden_values() -> None:
     actual = local_median_dispersion_trend(abundance, dispersion, points=5)
 
     np.testing.assert_array_equal(actual, expected)
+
+
+def test_local_median_trend_gene_bins_are_explicit() -> None:
+    abundance = np.arange(1.0, 13.0)
+    dispersion = np.array([0.4, 0.1, 0.8, 0.2, 0.0, 1.1, 0.3, 0.9, 0.5, 0.7, 1.3, 0.6])
+
+    expected = np.concatenate(
+        [
+            local_median_dispersion_trend(abundance[:5], dispersion[:5]),
+            local_median_dispersion_trend(abundance[5:10], dispersion[5:10]),
+            local_median_dispersion_trend(abundance[10:], dispersion[10:]),
+        ]
+    )
+    actual = local_median_dispersion_trend(abundance, dispersion, gene_bin_size=5)
+
+    np.testing.assert_array_equal(actual, expected)
+    with pytest.raises(ValueError, match="gene_bin_size"):
+        local_median_dispersion_trend(abundance, dispersion, gene_bin_size=0)
 
 
 def test_cox_reid_trace_does_not_change_the_fit() -> None:

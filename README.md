@@ -53,7 +53,9 @@ hvg_2000 = result.highly_variable_genes(2000)
 
 `SCTConfig.r_v2()` selects the validated R-v2 compatibility path. Plain `SCTConfig()`
 retains the original native research defaults for API compatibility; mixed, unvalidated
-algorithm combinations are reported as `config.statistical_mode == "experimental"`.
+algorithm combinations are reported as `config.statistical_mode == "experimental"`. The
+preset also fixes the compatibility-sensitive Cox--Reid gene bin at 500; it is not a
+performance-only batch size.
 
 ## Development
 

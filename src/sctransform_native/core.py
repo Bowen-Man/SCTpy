@@ -62,6 +62,7 @@ class SCTConfig:
     optimizer_ftol: float = 1e-10
     optimizer_gtol: float = 1e-6
     residual_block_size: int = 256
+    cox_reid_gene_bin_size: int | None = None
 
     @classmethod
     def r_v2(
@@ -80,6 +81,7 @@ class SCTConfig:
             n_cells=n_cells,
             seed=seed,
             fit_method="cox_reid",
+            cox_reid_gene_bin_size=500,
             dispersion_regularization="sct_v2",
             regularization_method="r_stats",
             regularization_support="clamp",
@@ -92,15 +94,23 @@ class SCTConfig:
         """Classify the selected statistical path without changing its behavior."""
         signature = (
             self.fit_method,
+            self.cox_reid_gene_bin_size,
             self.dispersion_regularization,
             self.regularization_method,
             self.regularization_support,
             self.theta_postprocess,
         )
-        if signature == ("nb_mle", "native", "native", "extrapolate", "none"):
+        if signature == (
+            "nb_mle",
+            None,
+            "native",
+            "native",
+            "extrapolate",
+            "none",
+        ):
             return "native"
         if (
-            signature == ("cox_reid", "sct_v2", "r_stats", "clamp", "moment_ratio")
+            signature == ("cox_reid", 500, "sct_v2", "r_stats", "clamp", "moment_ratio")
             and self.clip_range is None
             and self.bandwidth_adjust == 3.0
             and self.outlier_mad_threshold == 10.0
@@ -120,6 +130,8 @@ class SCTConfig:
             raise ValueError("n_cells must be at least 2 or None")
         if self.fit_method not in {"nb_mle", "cox_reid"}:
             raise ValueError("fit_method must be 'nb_mle' or 'cox_reid'")
+        if self.cox_reid_gene_bin_size is not None and self.cox_reid_gene_bin_size < 1:
+            raise ValueError("cox_reid_gene_bin_size must be positive or None")
         if self.bandwidth_adjust <= 0:
             raise ValueError("bandwidth_adjust must be positive")
         if self.outlier_mad_threshold <= 0:
@@ -373,7 +385,9 @@ def fit_transform(
             np.mean(fit_library_size)
         )
         dispersion_trend = local_median_dispersion_trend(
-            preliminary_abundance, raw_dispersion
+            preliminary_abundance,
+            raw_dispersion,
+            gene_bin_size=resolved_config.cox_reid_gene_bin_size,
         )
         for gene_index, dispersion in zip(fitted, dispersion_trend, strict=True):
             y = dense_gene_row(fit_counts, int(gene_index))

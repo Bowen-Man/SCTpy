@@ -16,10 +16,10 @@ The GPU path is ordinary CuPy elementwise operations plus reductions; it contain
 custom CUDA, Triton, persistent kernel, asynchronous copy, or double buffering.
 
 This selection was valid for the provisional `nb_mle/native` path. Reprofiling the
-validated `cox_reid/sct_v2/r_stats/clamp/moment_ratio` path changes the decision: on the
-same larger fixture, median fit time is 5.634 seconds, regularization is 0.150 seconds,
-and residuals plus HVG ranking are 0.011 seconds. The SJ primitive is therefore no longer
-the primary migration candidate. **measured on 2026-11-02**
+validated `cox_reid/gene_bin_500/sct_v2/r_stats/clamp/moment_ratio` path changes the
+decision: on the same larger fixture, median fit time is 4.993 seconds, regularization is
+0.134 seconds, and residuals plus HVG ranking are 0.026 seconds. The SJ primitive is
+therefore no longer the primary migration candidate. **measured on 2026-11-02**
 
 ## Measurement contract
 
