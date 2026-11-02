@@ -345,6 +345,39 @@ the preliminary fit feed the local-median trend. Parameter smoothing reduces tha
 roughly an order of magnitude, and all pre-registered gates pass without changing their
 tolerances.
 
+### Offset-fit trace and gene-bin A/B
+
+The earlier ordering/stopping explanation was tested rather than assumed. An opt-in trace
+now records the moment initialization, every offset and Cox--Reid score evaluation, solver
+iteration counts, stopping flags, and final parameters without changing the untraced fit.
+The diagnostic also repeats the local-dispersion trend and final intercept refit under
+controlled gene-bin sizes:
+
+```bash
+python -m benchmarks.diagnose_offset_fit \
+  --fixture benchmark-results/large/fixture.npz \
+  --manifest benchmark-results/large/fixture.selection.json \
+  --r-oracle benchmark-results/large/r-oracle \
+  --bin-sizes 499 500 501 1000 all \
+  --top 3 \
+  --output benchmark-results/large/offset-fit-diagnostics.json
+```
+
+| Local-trend gene bin | Raw-intercept RMSE vs Level A | Maximum absolute error |
+|---:|---:|---:|
+| 499 | 7.95e-5 | 1.94e-3 |
+| **500** | **3.88e-10** | **5.44e-9** |
+| 501 | 1.00e-4 | 4.39e-3 |
+| 1000 | 3.05e-4 | 2.21e-3 |
+| all 3091 genes | 4.24e-4 | 4.94e-3 |
+
+The A/B holds every per-gene preliminary and dispersion fit fixed and changes only the
+trend bin. The R default of 500 removes essentially the entire Level-A raw-intercept gap.
+This falsifies the strong stopping-tolerance hypothesis for this fixture and identifies
+gene-bin-local trend estimation as the confirmed cause. The remaining `3.88e-10` is
+compatible with solver and reduction-order differences; it is not used to justify
+bit-identity work. **measured on 2026-11-02**
+
 ```bash
 python -m benchmarks.compare_correctness \
   --fixture benchmark-results/large/fixture.npz \
