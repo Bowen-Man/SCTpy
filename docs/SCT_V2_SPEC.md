@@ -118,11 +118,20 @@ correctness report. The exact historical reference outlier algorithm is not comp
 specified by the v2 paper, so an R-compatible clean-room replacement is currently
 **unknown** rather than inferred from GPL implementation details.
 
-The differential harness also reports finite versus infinite raw-theta masks. A
-method-of-moments ratio is evaluated as a diagnostic because it explains most of the
-external oracle's Inf branch on the fixed fixture. It is not applied by the alpha core:
-the exact oracle postprocessing rule is not specified in the cited papers, and the native
-MLE is not the same estimator used by the oracle. **measured; project decision**
+The differential harness also reports finite versus infinite raw-theta masks. The default
+`theta_postprocess="none"` leaves converged raw estimates unchanged. An experimental
+`moment_ratio` policy computes
+
+```text
+theta_mm = mean**2 / (variance - mean), when variance > mean
+flag = theta_mm / theta_native < threshold
+```
+
+with a recorded default threshold of `1e-3`. Flagged raw theta values become infinity and
+are excluded from smoother training, but they remain non-Poisson modeled genes and receive
+regularized predictions. The exact oracle postprocessing rule is not specified in the
+cited papers, and the native MLE is not the same estimator used by the oracle, so this is
+an explicit **measured; project decision**, not an R-compatibility claim.
 
 ## Pearson residuals and v2 floor
 

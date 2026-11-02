@@ -1,6 +1,6 @@
 import numpy as np
 
-from sctransform_native._fit import fit_nb_offset
+from sctransform_native._fit import fit_nb_offset, theta_moment_ratio_mask
 
 
 def test_nb_offset_mle_recovers_simulated_parameters() -> None:
@@ -25,3 +25,13 @@ def test_nb_offset_mle_recovers_simulated_parameters() -> None:
     assert fitted.converged
     assert abs(fitted.intercept - expected_intercept) < 0.08
     assert abs(np.log(fitted.theta / expected_theta)) < 0.20
+
+
+def test_theta_moment_ratio_mask_handles_poisson_and_overdispersed_genes() -> None:
+    mask = theta_moment_ratio_mask(
+        np.array([2.0, 2.0, 2.0]),
+        np.array([2.0, 6.0, 6.0]),
+        np.array([1.0e8, 1.0e4, 1.0e2]),
+        threshold=1.0e-3,
+    )
+    np.testing.assert_array_equal(mask, np.array([False, True, False]))

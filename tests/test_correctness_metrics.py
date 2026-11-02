@@ -5,7 +5,6 @@ from benchmarks.correctness import (
     jaccard,
     named_set_metrics,
     numeric_metrics,
-    theta_moment_ratio_mask,
 )
 
 
@@ -40,16 +39,6 @@ def test_named_set_metrics_reports_overlap_and_sizes() -> None:
         "union": 4,
         "jaccard": 0.25,
     }
-
-
-def test_theta_moment_ratio_mask_handles_poisson_and_overdispersed_genes() -> None:
-    mask = theta_moment_ratio_mask(
-        np.array([2.0, 2.0, 2.0]),
-        np.array([2.0, 6.0, 6.0]),
-        np.array([1.0e8, 1.0e4, 1.0e2]),
-        threshold=1.0e-3,
-    )
-    np.testing.assert_array_equal(mask, np.array([False, True, False]))
 
 
 def test_effectively_constant_arrays_report_undefined_correlations() -> None:

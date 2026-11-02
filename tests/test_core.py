@@ -73,6 +73,7 @@ def test_cpu_core_produces_complete_float64_result() -> None:
         "input_statistics",
         "selection",
         "fit",
+        "theta_postprocess",
         "regularization",
         "residuals_and_hvg",
         "total",
@@ -108,6 +109,32 @@ def test_sct_v2_dispersion_regularization_is_explicit() -> None:
     assert np.all(np.isfinite(sct_v2.regularized_theta[modeled]))
     assert not np.allclose(
         sct_v2.regularized_theta[modeled], native.regularized_theta[modeled]
+    )
+
+
+def test_theta_moment_postprocess_is_visible_and_excluded_from_training() -> None:
+    counts, genes, cells = _overdispersed_fixture()
+    result = fit_transform(
+        counts,
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig(
+            min_cells=5,
+            n_genes=None,
+            n_cells=None,
+            theta_postprocess="moment_ratio",
+            theta_moment_ratio_threshold=0.3,
+        ),
+    )
+
+    processed = result.theta_postprocessed
+    assert np.any(processed)
+    assert np.all(np.isinf(result.raw_theta[processed]))
+    assert np.all(np.isfinite(result.regularized_theta[processed]))
+    assert np.all(result.parameter_outlier[processed])
+    assert all(
+        result.fit_status[index] == "theta_postprocessed"
+        for index in np.flatnonzero(processed)
     )
 
 

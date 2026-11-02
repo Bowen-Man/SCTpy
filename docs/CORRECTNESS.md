@@ -180,9 +180,52 @@ theta_mm = mean**2 / (variance - mean)
 when `variance > mean`, and flags a native fit when
 `theta_mm / theta_native < 1e-3`. This selects 155 genes, 149 of which are in
 the 150-gene Level A Inf set (Jaccard `0.955128`). The high overlap confirms
-that a moment-to-fit ratio explains most of the branch difference. It is not
-an exact match because the native and oracle estimators are different, and the
-diagnostic is not yet a core postprocessing policy.
+that a moment-to-fit ratio explains most of the branch difference. This broad
+diagnostic includes every available raw fit; the applied policy below is more
+conservative and is limited to fits marked converged.
+
+The same hypothesis is available as an experimental, non-default core policy
+for controlled A/B runs. It is limited to converged non-Poisson fits, exposes a
+separate `theta_postprocessed` mask, and excludes flagged genes from smoother
+training without reclassifying them as Poisson genes.
+
+### Combined dispersion/theta A/B
+
+The strongest result comes from evaluating the v2 dispersion transform and
+the moment-ratio policy together. The table compares the unchanged alpha
+default with that experimental combination on the same larger fixture:
+
+| Quantity | default native | `sct_v2 + moment_ratio` |
+|---|---:|---:|
+| regularized intercept RMSE | 0.001132 | 0.001067 |
+| regularized log10(theta) RMSE | 0.046279 | 0.008003 |
+| clipped residual RMSE | 0.014760 | 0.003331 |
+| clipped residual Pearson | 0.999975 | 0.999997 |
+| residual variance RMSE | 0.028817 | 0.004912 |
+| Top-1000 HVG Jaccard | 0.956947 | 0.992032 |
+| Top-2000 HVG Jaccard | 0.986097 | 0.997004 |
+| Top-3000 HVG Jaccard | 0.998668 | 1.000000 |
+
+The applied converged-only mask contains 149 genes and overlaps 143 of Level
+A's 150 raw-theta Inf genes (Jaccard `0.916667`). In this configuration the
+combined parameter-outlier mask contains 150 genes, also overlapping 143 Level
+A genes (Jaccard `0.910828`). The result supports the combined hypothesis on
+this fixture, but is not enough evidence to change public defaults. The small
+fixture shows the same direction: regularized log10(theta) RMSE decreases from
+`0.061539` to `0.006869`, residual RMSE from `0.025998` to `0.005671`, and
+residual-variance RMSE from `0.052142` to `0.006621`.
+
+```bash
+python -m benchmarks.compare_correctness \
+  --fixture benchmark-results/large/fixture.npz \
+  --manifest benchmark-results/large/fixture.selection.json \
+  --r-oracle benchmark-results/large/r-oracle \
+  --reference benchmark-results/large/reference-v0.4.0.npz \
+  --dispersion-regularization sct_v2 \
+  --theta-postprocess moment_ratio \
+  --output benchmark-results/large/correctness-sct-v2-moment.json \
+  --enforce
+```
 
 ## Regularization support A/B
 
