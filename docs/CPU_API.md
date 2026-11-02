@@ -10,7 +10,7 @@ result = fit_transform(
     gene_names=gene_names,
     cell_names=cell_names,
     matrix_orientation="genes_by_cells",
-    config=SCTConfig(seed=1448145),
+    config=SCTConfig.r_v2(seed=1448145),
 )
 ```
 
@@ -33,6 +33,22 @@ result = fit_transform_anndata(adata, layer="counts")
 AnnData is cells x genes, so the adapter calls the core with that orientation explicitly.
 A CuPy-backed `X` or layer raises `ImplicitDeviceTransferError`; callers must choose and
 perform device movement themselves.
+
+## Statistical modes
+
+`SCTConfig.r_v2()` is the frozen compatibility preset validated against R 4.5.2,
+`sctransform` 0.4.3, and `glmGamPoi` 1.22.0. It selects:
+
+```text
+cox_reid / sct_v2 / r_stats / clamp / moment_ratio
+```
+
+The preset accepts selection controls (`min_cells`, `n_genes`, `n_cells`, and `seed`) and
+the execution-only `residual_block_size`; its statistical compatibility settings are not
+override parameters. Plain `SCTConfig()` retains the existing native research path and
+therefore remains backward compatible. `config.statistical_mode` returns `"r_v2"`,
+`"native"`, or `"experimental"`; the last label covers mixed algorithm settings that have
+not passed the complete compatibility gate as one configuration.
 
 ## Result contract
 
@@ -75,13 +91,7 @@ normal-kernel smoothing, and abundance-local outlier semantics. A controlled v2 
 therefore uses:
 
 ```python
-SCTConfig(
-    fit_method="cox_reid",
-    dispersion_regularization="sct_v2",
-    regularization_method="r_stats",
-    regularization_support="clamp",
-    theta_postprocess="moment_ratio",
-)
+SCTConfig.r_v2()
 ```
 
 This does not change device placement or add an R dependency.

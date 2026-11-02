@@ -1,0 +1,89 @@
+# Current state assessment
+
+Audit date: **2026-11-02**. Audited commit:
+`908b39844879624069aa976edb392fde14425736` on a clean `main` branch. The corresponding
+GitHub Actions run completed successfully on Windows and Linux with Python 3.10--3.13.
+
+## Package structure and dependencies
+
+- `core.py` owns configuration, stage orchestration, result state, residuals, and HVG
+  ranking.
+- `_fit.py` contains the native NB MLE research estimator and the validated Cox--Reid
+  offset estimator.
+- `_regularize.py` contains the native paper-derived smoother and the independently
+  implemented R-stats compatibility path.
+- `selection.py` owns the explicit PCG64 cell/gene manifest and sparse-aware v2 selection.
+- `anndata.py` is a non-mutating CPU adapter; `backend.py` defines only an explicit future
+  device/transfer boundary.
+
+Runtime dependencies are NumPy and SciPy. AnnData, psutil, and CuPy are optional extras.
+The project ships no R runtime, reference binary, or project-owned compiled extension.
+
+## Statistical paths
+
+Plain `SCTConfig()` remains the original native research path:
+
+```text
+nb_mle / native / native / extrapolate / none
+```
+
+`SCTConfig.r_v2()` is the formal compatibility preset:
+
+```text
+cox_reid / sct_v2 / r_stats / clamp / moment_ratio
+```
+
+Mixed paths are explicitly labelled `experimental`. Changing selection counts or the
+residual block size does not change the statistical mode. The default was not silently
+changed, preserving the alpha API.
+
+## Independently reproduced correctness baseline
+
+The audit reran the local test suite and both fixed external-oracle comparisons before any
+code change. The suite reported 66 passed tests and one explicit optional-CuPy skip.
+
+| Metric vs R oracle | 800 x 240 | 3200 x 240 |
+|---|---:|---:|
+| raw intercept RMSE | 3.62e-4 | 4.24e-4 |
+| raw log10(theta) RMSE | 6.20e-7 | 2.36e-6 |
+| regularized intercept RMSE | 4.05e-5 | 4.16e-5 |
+| regularized log10(theta) RMSE | 1.44e-8 | 1.55e-8 |
+| residual RMSE | 8.52e-5 | 6.86e-5 |
+| residual-variance RMSE | 5.97e-5 | 4.67e-5 |
+
+Finite/Inf theta masks and parameter-outlier masks were exact on both fixtures. The larger
+fixture had exact HVG Top 1000/2000/3000 sets. This confirms the existing residual and
+regularization reinjection conclusions; those modules should not be rewritten without new
+contrary evidence.
+
+## Numerical gap classification
+
+- **Confirmed issue:** the preliminary Cox--Reid intercept is the largest remaining
+  numerical difference. The larger-fixture RMSE is `4.24e-4`, while later smoothing
+  reduces final-intercept RMSE to `4.16e-5`.
+- **Plausible hypothesis:** iteration order and stopping behavior in preliminary offset
+  fitting explain most of that gap. No iteration-level trace currently proves it.
+- **Unverified concern:** synthetic Gamma--Poisson fixtures do not establish behavior on
+  licensed real scRNA-seq data or very large cell counts.
+- **Resolved on fixed fixtures:** final residual arithmetic, regularization from oracle raw
+  parameters, theta finite/Inf branching, parameter outliers, and HVG sets.
+
+## Performance and backend boundary
+
+On the controlled larger fixture, the validated path has median compute time `5.855 s`,
+of which Cox--Reid fitting is `5.634 s` (96.2%). Median peak RSS is `105.98 MiB`.
+Regularization and residual/HVG work are not current optimization targets. The next
+falsifiable performance experiment is batched CPU Cox--Reid score evaluation; GPU work is
+deferred until batching, root divergence, transfers, and memory scaling are measured.
+
+Production execution is CPU NumPy/SciPy only. CUDA inputs are rejected at the AnnData
+boundary rather than copied implicitly. CuPy currently appears only in an isolated,
+optional microbenchmark; PyTorch is not a dependency or backend.
+
+## Remaining P0 work
+
+1. Export a versioned stage-wise diagnostic record with mask accounting and top-error
+   genes.
+2. Add preliminary offset-intercept iteration tracing as an opt-in diagnostic, then test
+   the stopping-order hypothesis without changing production numerics.
+3. Add licensed real-data provenance and validation before generalizing fixture results.
