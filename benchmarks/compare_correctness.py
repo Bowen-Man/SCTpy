@@ -17,7 +17,10 @@ from .correctness import (
     jaccard,
     named_set_metrics,
     numeric_metrics,
+    theta_moment_ratio_mask,
 )
+
+THETA_MOMENT_RATIO_THRESHOLD = 1.0e-3
 
 
 def _read_lines(path: Path) -> tuple[str, ...]:
@@ -32,7 +35,7 @@ def load_r_oracle(path: Path) -> dict[str, Any]:
     fit_genes = _read_lines(path / "fit_genes.txt")
     gene_count = len(genes)
     cell_count = len(cells)
-    return {
+    oracle = {
         "genes": genes,
         "cells": cells,
         "fit_genes": fit_genes,
@@ -56,11 +59,19 @@ def load_r_oracle(path: Path) -> dict[str, Any]:
             else None
         ),
     }
+    oracle["raw_infinite_theta_genes"] = np.asarray(fit_genes)[
+        np.isinf(oracle["raw_theta"])
+    ]
+    return oracle
 
 
 def load_reference(path: Path) -> dict[str, Any]:
     with np.load(path, allow_pickle=False) as value:
-        return {key: value[key] for key in value.files}
+        reference = {key: value[key] for key in value.files}
+    reference["raw_infinite_theta_genes"] = np.asarray(reference["fit_genes"])[
+        np.isinf(reference["raw_theta"])
+    ]
+    return reference
 
 
 def _indices(names: tuple[str, ...] | np.ndarray) -> dict[str, int]:
@@ -120,6 +131,11 @@ def compare_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
         metrics["gate"] = gate_metrics(metrics, THRESHOLDS["log10_theta"])
         report[f"log10_{field}"] = metrics
 
+    if "raw_infinite_theta_genes" in left and "raw_infinite_theta_genes" in right:
+        report["raw_infinite_theta_genes"] = named_set_metrics(
+            left["raw_infinite_theta_genes"], right["raw_infinite_theta_genes"]
+        )
+
     left_residuals, right_residuals, _ = _aligned(
         left, right, field="residuals", names_field="genes"
     )
@@ -174,7 +190,17 @@ def native_result(
     )
     eligible_indices = np.flatnonzero(result.eligible_gene)
     fit_indices = np.flatnonzero(result.selected_gene & ~result.poisson_gene)
-    fit_indices = fit_indices[np.isfinite(result.raw_theta[fit_indices])]
+    selected_cells = np.asarray(manifest.selected_cell_indices, dtype=np.int64)
+    fit_counts = counts[:, selected_cells]
+    fit_mean = np.mean(fit_counts, axis=1, dtype=np.float64)
+    fit_variance = np.var(fit_counts, axis=1, ddof=1, dtype=np.float64)
+    moment_ratio = theta_moment_ratio_mask(
+        fit_mean[fit_indices],
+        fit_variance[fit_indices],
+        result.raw_theta[fit_indices],
+        threshold=THETA_MOMENT_RATIO_THRESHOLD,
+    )
+    raw_infinite = fit_indices[np.isinf(result.raw_theta[fit_indices])]
     return (
         {
             "genes": np.asarray(result.gene_names)[eligible_indices],
@@ -185,6 +211,10 @@ def native_result(
             "regularized_theta": result.regularized_theta[eligible_indices],
             "raw_intercept": result.raw_intercept[fit_indices],
             "raw_theta": result.raw_theta[fit_indices],
+            "raw_infinite_theta_genes": np.asarray(result.gene_names)[raw_infinite],
+            "theta_moment_ratio_genes": np.asarray(result.gene_names)[
+                fit_indices[moment_ratio]
+            ],
             "residuals": result.residuals[eligible_indices],
             "residual_mean": result.residual_mean[eligible_indices],
             "residual_variance": result.residual_variance[eligible_indices],
@@ -235,10 +265,15 @@ def main() -> None:
         "schema_version": 1,
         "generated_on": "2026-11-02",
         "dispersion_regularization": args.dispersion_regularization,
+        "theta_moment_ratio_threshold": THETA_MOMENT_RATIO_THRESHOLD,
         "thresholds_preregistered": THRESHOLDS,
         "level_b_vs_level_a": compare_pair(level_b, level_a),
         "level_c_vs_level_a": compare_pair(level_c, level_a),
         "level_c_vs_level_b": compare_pair(level_c, level_b),
+        "theta_moment_ratio_vs_level_a_raw_infinite": named_set_metrics(
+            level_c["theta_moment_ratio_genes"],
+            level_a["raw_infinite_theta_genes"],
+        ),
         "level_c_timing_seconds": native_timing,
     }
     gates = _all_gates(report["level_c_vs_level_a"]) + _all_gates(
