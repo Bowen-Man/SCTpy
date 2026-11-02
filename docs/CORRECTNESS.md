@@ -81,6 +81,34 @@ python -m benchmarks.compare_correctness --fixture benchmark-results/large/fixtu
 
 The R and Level-B commands intentionally require separately installed external oracles.
 
+## Stage-wise diagnostic contract
+
+The same comparison command now emits a versioned `stages` record without changing any
+gate or numerical path:
+
+- `input`: fixture shape, counts SHA-256, ordered-cell agreement;
+- `selection`: manifest SHA-256 and algorithm, selected sizes, raw-fit gene-set overlap,
+  and fit-cell order when the oracle artifact exposes it;
+- `raw_fitting`: intercept and log10(theta) metrics, finite/Inf/NaN classification,
+  relative theta error, deterministic top-error genes, and native convergence summaries;
+- `regularization`: final parameter metrics and the named outlier mask;
+- `residual`: matrix, mean, and variance metrics plus genes ranked by row RMSE;
+- `hvg`: Top-K overlap, complete gene-set overlap, exact-order status, and complete-rank
+  Spearman correlation.
+
+Relative error is reported only for finite, positive theta pairs. Oracle convergence is
+recorded as unavailable because the frozen artifact does not expose optimizer status;
+the report never treats absence as success. New R oracle exports also persist
+`cells_step1`, while older artifacts remain readable and report `fit_cell_order_exact=null`.
+
+On the larger fixed fixture, the stage report reproduces the existing passing gate. Raw
+theta classifications are exact (2,941 finite and 150 positive-infinite pairs), all 3,091
+native comparison fits are converged, and median/maximum recorded iteration counts are
+39/70. The three largest raw-intercept absolute errors are `gene_03193` (`0.00494`),
+`gene_03104` (`0.00443`), and `gene_03155` (`0.00305`). Complete HVG order is not exactly
+identical, while complete-rank Spearman correlation is `0.999999911` and the Top
+1000/2000/3000 sets remain exact. **measured on 2026-11-02**
+
 ## Final-parameter residual isolation
 
 The residual stage can be tested independently of selection, fitting, and

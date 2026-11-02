@@ -4,7 +4,11 @@ from benchmarks.correctness import (
     gate_metrics,
     jaccard,
     named_set_metrics,
+    numeric_mask_metrics,
     numeric_metrics,
+    relative_error_metrics,
+    top_absolute_errors,
+    top_row_rmse,
 )
 
 
@@ -47,3 +51,33 @@ def test_effectively_constant_arrays_report_undefined_correlations() -> None:
     metrics = numeric_metrics(perturbed, fixed)
     assert metrics["pearson"] is None
     assert metrics["spearman"] is None
+
+
+def test_mask_relative_and_top_error_diagnostics() -> None:
+    left = np.array([1.0, 4.0, np.inf, np.nan])
+    right = np.array([1.0, 2.0, np.inf, np.nan])
+
+    masks = numeric_mask_metrics(left, right)
+    assert masks["exact"]
+    assert masks["mismatch_count"] == 0
+    assert masks["left"] == {
+        "finite": 2,
+        "positive_infinity": 1,
+        "negative_infinity": 0,
+        "nan": 1,
+    }
+    relative = relative_error_metrics(left, right)
+    assert relative["n"] == 2
+    assert relative["max"] == 1.0
+    top = top_absolute_errors(("a", "b", "c", "d"), left, right, limit=1)
+    assert top == [{"name": "b", "left": 4.0, "right": 2.0, "absolute_error": 2.0}]
+
+
+def test_top_row_rmse_reports_named_rows() -> None:
+    top = top_row_rmse(
+        ("small", "large"),
+        np.array([[0.0, 1.0], [0.0, 4.0]]),
+        np.array([[0.0, 1.0], [0.0, 0.0]]),
+        limit=1,
+    )
+    assert top == [{"name": "large", "rmse": np.sqrt(8.0)}]
