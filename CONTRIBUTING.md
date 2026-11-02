@@ -18,3 +18,13 @@ inspection to resolve it.
 Development starts from `main`, uses a focused feature branch, and is squash-merged only
 after required CI checks pass. Do not commit environments, caches, downloaded datasets,
 reference binaries, or large benchmark output.
+
+Keep the implementation small: remove unused abstractions instead of preserving speculative
+APIs, normalize sparse inputs at one boundary, and densify only where the documented
+algorithm requires a gene row/block or dense residual output. Before opening a PR, run:
+
+```bash
+ruff check .
+ruff format --check .
+python -m pytest
+```

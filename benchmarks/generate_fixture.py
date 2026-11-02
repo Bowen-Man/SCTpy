@@ -9,10 +9,7 @@ from scipy import sparse
 
 from sctransform_native import create_selection_manifest
 
-try:
-    from ._common import count_sha256, write_json
-except ImportError:  # pragma: no cover - direct script execution
-    from _common import count_sha256, write_json
+from ._common import count_sha256, write_json
 
 
 def generate_counts(*, genes: int, cells: int, seed: int) -> np.ndarray:

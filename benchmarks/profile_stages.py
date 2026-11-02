@@ -3,11 +3,11 @@ from __future__ import annotations
 import argparse
 import cProfile
 import json
-from pathlib import Path
 import pstats
 import threading
 import time
 import tracemalloc
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -16,10 +16,7 @@ from scipy import sparse
 
 from sctransform_native import SCTConfig, fit_transform
 
-try:
-    from ._common import load_fixture, load_manifest, matrix_summary, write_json
-except ImportError:  # pragma: no cover - direct script execution
-    from _common import load_fixture, load_manifest, matrix_summary, write_json
+from ._common import load_fixture, load_manifest, matrix_summary, write_json
 
 
 def _rss_sampler(stop: threading.Event, samples: list[int]) -> None:
@@ -70,7 +67,9 @@ def main() -> None:
     )
     rss_samples = [psutil.Process().memory_info().rss]
     stop = threading.Event()
-    sampler = threading.Thread(target=_rss_sampler, args=(stop, rss_samples), daemon=True)
+    sampler = threading.Thread(
+        target=_rss_sampler, args=(stop, rss_samples), daemon=True
+    )
     profile = cProfile.Profile()
     tracemalloc.start()
     sampler.start()

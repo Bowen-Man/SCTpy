@@ -53,9 +53,7 @@ def _negative_log_likelihood_and_gradient(
         - (y + theta) / (mu + theta)
     )
     objective = -float(np.sum(log_likelihood))
-    gradient = -np.asarray(
-        [score_intercept, theta * score_theta], dtype=np.float64
-    )
+    gradient = -np.asarray([score_intercept, theta * score_theta], dtype=np.float64)
     return objective, gradient
 
 

@@ -6,13 +6,13 @@ import io
 import json
 import os
 import platform
-from pathlib import Path
 import statistics
 import subprocess
 import sys
 import threading
 import time
 import tracemalloc
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -21,11 +21,7 @@ from scipy import sparse
 
 from sctransform_native import SCTConfig, fit_transform
 
-try:
-    from ._common import load_fixture, load_manifest, matrix_summary, write_json
-except ImportError:  # pragma: no cover - direct script execution
-    from _common import load_fixture, load_manifest, matrix_summary, write_json
-
+from ._common import load_fixture, load_manifest, matrix_summary, write_json
 
 THREAD_VARIABLES = (
     "OMP_NUM_THREADS",
@@ -189,7 +185,8 @@ def main() -> None:
     warmup_runs: list[dict[str, Any]] = []
     command = [
         sys.executable,
-        str(Path(__file__).resolve()),
+        "-m",
+        "benchmarks.run_baseline",
         "--worker",
         "--fixture",
         str(args.fixture),

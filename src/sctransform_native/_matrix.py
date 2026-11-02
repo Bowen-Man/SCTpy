@@ -10,6 +10,17 @@ MatrixOrientation = Literal["genes_by_cells", "cells_by_genes"]
 CountMatrix = np.ndarray | sparse.csr_matrix
 
 
+def _validate_count_values(values: np.ndarray) -> None:
+    if not np.issubdtype(values.dtype, np.number) or np.iscomplexobj(values):
+        raise TypeError("counts must contain real numeric values")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("counts must be finite")
+    if np.any(values < 0):
+        raise ValueError("counts must be nonnegative")
+    if not np.all(values == np.floor(values)):
+        raise ValueError("counts must be integer-valued raw UMI counts")
+
+
 def _validate_names(
     names: Sequence[str], *, expected: int, kind: str
 ) -> tuple[str, ...]:
@@ -32,42 +43,27 @@ def prepare_counts(
 ) -> tuple[CountMatrix, tuple[str, ...], tuple[str, ...]]:
     """Validate counts and return a float64 genes-by-cells matrix."""
     if orientation not in ("genes_by_cells", "cells_by_genes"):
-        raise ValueError(
-            "orientation must be 'genes_by_cells' or 'cells_by_genes'"
-        )
+        raise ValueError("orientation must be 'genes_by_cells' or 'cells_by_genes'")
 
     if sparse.issparse(counts):
+        _validate_count_values(np.asarray(counts.tocoo(copy=False).data))
         matrix = counts.T if orientation == "cells_by_genes" else counts
         if matrix.ndim != 2:
             raise ValueError("counts must be a two-dimensional matrix")
-        matrix = matrix.tocsr(copy=True)
+        # A single internal sparse representation keeps matrix/array and format
+        # differences out of the numerical core.
+        matrix = sparse.csr_matrix(matrix, dtype=np.float64, copy=True)
         matrix.sum_duplicates()
         matrix.eliminate_zeros()
         matrix.sort_indices()
-        values = matrix.data
-        if not np.issubdtype(values.dtype, np.number) or np.iscomplexobj(values):
-            raise TypeError("counts must contain real numeric values")
-        if not np.all(np.isfinite(values)):
-            raise ValueError("counts must be finite")
-        if np.any(values < 0):
-            raise ValueError("counts must be nonnegative")
-        if not np.all(values == np.floor(values)):
-            raise ValueError("counts must be integer-valued raw UMI counts")
-        prepared: CountMatrix = matrix.astype(np.float64, copy=False)
+        prepared: CountMatrix = matrix
     else:
         array = np.asarray(counts)
         if array.ndim != 2:
             raise ValueError("counts must be a two-dimensional matrix")
         if orientation == "cells_by_genes":
             array = array.T
-        if not np.issubdtype(array.dtype, np.number) or np.iscomplexobj(array):
-            raise TypeError("counts must contain real numeric values")
-        if not np.all(np.isfinite(array)):
-            raise ValueError("counts must be finite")
-        if np.any(array < 0):
-            raise ValueError("counts must be nonnegative")
-        if not np.all(array == np.floor(array)):
-            raise ValueError("counts must be integer-valued raw UMI counts")
+        _validate_count_values(array)
         prepared = np.asarray(array, dtype=np.float64, order="C")
 
     genes, cells = prepared.shape
@@ -127,7 +123,7 @@ def global_nonzero_median(counts_gxc: CountMatrix) -> float:
 
 def dense_gene_row(counts_gxc: CountMatrix, gene_index: int) -> np.ndarray:
     if sparse.issparse(counts_gxc):
-        return counts_gxc.getrow(gene_index).toarray().ravel()
+        return counts_gxc[[gene_index]].toarray().ravel()
     return np.asarray(counts_gxc[gene_index], dtype=np.float64)
 
 
