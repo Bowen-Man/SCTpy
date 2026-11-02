@@ -1,7 +1,7 @@
 # Licensed real-data validation plan
 
-Status: provenance and deterministic derivation fixed on 2026-11-03; differential results
-are not yet claimed.
+Status: provenance, deterministic derivation, and the first Level-A/B/C differential were
+completed on 2026-11-03.
 
 ## Source
 
@@ -75,3 +75,35 @@ the derived counts as canonical CSR arrays. The manual `Real-data validation` wo
 run either from the Actions UI or by applying the `real-data-validation` label to a PR.
 It installs both external oracles only inside that isolated job and uploads compact
 diagnostics, never the source HDF5, sparse fixture, full residual matrix, or native binary.
+
+## First differential result
+
+The isolated GitHub Actions run
+[`41492647448`](https://github.com/Bowen-Man/sctransform-native/actions/runs/41492647448)
+used R 4.5.2, `sctransform` 0.4.3, `glmGamPoi` 1.22.0, `matrixStats` 1.5.0,
+and Level B at commit `b79041796e3f7ca3b33029adde5d7132eedd2430`. The R fit selected
+2,000 genes and 2,000 cells; 142 raw theta values were infinite and 159 parameter outliers
+were reported. Level C matched both named masks exactly. **measured**
+
+| Level C versus Level A | Result |
+|---|---:|
+| raw intercept RMSE | `4.83e-9` |
+| raw log10(theta) RMSE | `1.03e-5` |
+| regularized intercept RMSE | `2.02e-4` |
+| regularized log10(theta) RMSE | `2.08e-8` |
+| Pearson residual RMSE | `1.77e-5` |
+| residual-variance RMSE | `2.20e-5` |
+| residual-variance Spearman | `0.9999999952` |
+| HVG Top 1000/2000/3000 Jaccard | `1.0 / 1.0 / 1.0` |
+
+The complete HVG order was not identical; its Spearman correlation was `0.9999999952`.
+Level C's recorded fit and total stage times were 5.88 s and 7.32 s on the hosted runner.
+These are one-fixture measurements, not general accuracy or performance claims. The
+pre-registered broad real-data/full-differential thresholds passed against both Level A
+and Level B; no threshold was changed after observing this run.
+
+An initial controlled run canonicalized the same named selection into source order. It
+preserved the selected sets but changed 500-gene bin membership, producing raw-intercept
+RMSE `6.06e-3`. Replaying the oracle's ordered manifest reduced that value to `4.83e-9`.
+This identifies selection order as part of the numerical contract when gene-bin fitting
+is enabled. **measured**
