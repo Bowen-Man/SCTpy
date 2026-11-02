@@ -59,22 +59,18 @@ stage medians.
 
 ## GPU decision from evidence
 
-The current evidence does not justify a custom CUDA or Triton kernel. The larger fixture's
-dominant regularization work is blocked pairwise Gaussian derivative evaluation plus
-smoothing, while the next hotspot is thousands of small optimizer calls. The retained
-dense residual matrix is small here, and H2D/D2H transfer plus per-gene launch overhead
-could erase any benefit.
+The evidence still does not justify a custom CUDA or Triton kernel. The isolated CuPy
+microbenchmark selected the SJ fourth-derivative functional because regularization is the
+dominant stage. Across two controlled invocations it was 53.3--59.4x faster than the CPU
+primitive including H2D and scalar D2H, with float64 relative error `2.20e-16` and a 30.4
+MiB estimated live block working set. This supports a future CuPy prototype for that
+primitive, not an end-to-end SCT claim. See [GPU_FEASIBILITY.md](GPU_FEASIBILITY.md).
 
-A future GPU feasibility experiment should therefore isolate one operation at a time:
-
-1. blocked SJ derivative evaluation and Gaussian smoothing;
-2. batched NB likelihood/gradient evaluation, without promising a GPU optimizer;
-3. gene-block residual calculation only on a fixture large enough for residual work to be
-   material.
-
-It must report transfers separately, enforce a 12 GiB working-set ceiling, and compare
-against the CPU block implementation. Until such a microbenchmark shows a useful region,
-the project keeps these stages on CPU and does not add CUDA dependencies.
+The next evidence steps are Gaussian smoothing and repeated root-solver integration,
+followed by batched NB likelihood/gradient evaluation without assuming a GPU optimizer.
+Residual calculation should be reconsidered only on a fixture where profiling makes it
+material. The package continues to execute all production paths on CPU; CUDA remains an
+optional benchmark dependency.
 
 ## Reproduction
 

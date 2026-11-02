@@ -1,7 +1,7 @@
 # RAPIDS and GPU integration boundary
 
-Status: design only. No GPU kernel is authorized until CPU correctness and stage profiling
-identify a worthwhile target.
+Status: CPU/AnnData boundary implemented; isolated CuPy feasibility benchmark only. There
+is no package GPU backend and no implicit CPU fallback presented as GPU execution.
 
 ## Current ecosystem behavior
 
@@ -23,11 +23,11 @@ identify a worthwhile target.
 ## Narrow backend protocol
 
 The numerical core owns genes-by-cells logical blocks. Adapters own external orientation.
-The planned boundary is intentionally small:
+The implemented protocol in `sctransform_native.backend` is intentionally small:
 
 ```text
 ArrayBackend
-  name: "numpy" | "cupy"
+  name: backend identifier
   device(array) -> explicit device descriptor
   asarray(array, *, dtype, copy) -> same-device array
   to_device(array, device) -> explicit transfer result + transfer metadata
@@ -38,30 +38,36 @@ Sparse input remains sparse for validation, library statistics, and reductions. 
 gene-by-cell residual block is allocated only by an explicit `residual_block_size` policy.
 No adapter may move data as a side effect of a numerical operation. **project decision**
 
-## Feasibility questions and required measurements
+`fit_transform_anndata` consumes `X` or one named layer in AnnData's cells-by-genes
+orientation and does not mutate AnnData. It rejects CUDA-backed data with
+`ImplicitDeviceTransferError`. `infer_device` detects CuPy/cupyx without importing either
+package, so a CPU import remains CUDA-free. **implemented and tested**
 
-Before a GPU microbenchmark, CPU profiling must report per stage:
+## Profile evidence and feasibility boundary
 
-- wall and process CPU time;
-- input/output and peak-live shapes, dtype, bytes, and `nnz`;
-- whether operations are sparse reductions, per-gene scalar optimization, or dense
-  elementwise residual arithmetic;
-- residual materialization policy and peak RSS;
-- estimated arithmetic intensity and transfer bytes.
+The CPU profile reports stage wall/process time, shapes, dtypes, bytes, `nnz`, object
+lifetimes, RSS, and Python-only `tracemalloc` as a supplement. On the measured 3200 x 240
+fixture, regularization is 69.6% of uninstrumented stage time, NB fitting 29.5%, and
+residual/HVG calculation about 0.3%. **measured**
+
+The first isolated GPU target is therefore one diagonal-in fourth Gaussian derivative
+functional used by the SJ selector, not the residual path. See
+[GPU_FEASIBILITY.md](GPU_FEASIBILITY.md). Later candidates, not commitments, are batched
+likelihood/gradient evaluation and, only on materially larger cell counts, dense residual
+arithmetic or streamed residual variance. Scalar optimizer control flow and SciPy-only
+routines may remain on CPU. **inferred**
 
 For a 12 GB device, feasibility is evaluated against the peak **live** working set, not the
-final array alone. Host-to-device and device-to-host time are included in end-to-end GPU
-results and reported separately. Chunking is introduced only when the measured working set
-or sparse-index support requires it. Async copies, double buffering, Triton, persistent
-kernels, and custom CUDA are not candidates without profile evidence. **project decision**
-
-Likely candidates, not commitments, are dense residual arithmetic, blockwise residual
-variance, sparse column/row reductions, and batched likelihood evaluation. Scalar optimizer
-control flow and SciPy-only routines may remain on CPU. **inferred**
+final array alone. H2D and D2H time are included in end-to-end GPU results and reported
+separately. Chunking is introduced only when measured working set or sparse-index support
+requires it. Async copies, double buffering, Triton, persistent kernels, and custom CUDA
+are not candidates without further profile evidence. **project decision**
 
 ## Optional dependency rule
 
-CPU imports must never import CUDA modules. A future extra may expose CuPy support, but a
-missing driver or optional package must produce a clear unavailable-backend error. A skipped
-GPU test is reported as skipped; it must not execute the NumPy backend and call that a GPU
-pass. **project decision**
+CPU imports never import CUDA modules. The project exposes versioned optional extras,
+`gpu-cuda12` and `gpu-cuda13`, because CuPy wheel choice is tied to the CUDA major version.
+A missing driver or optional package produces a clear unavailable-backend error. A skipped
+GPU test is reported as skipped; it never executes NumPy and calls that a GPU pass. RMM
+remains an allocator option for a future RAPIDS backend; the microbenchmark does not
+require or silently configure it. **project decision**
