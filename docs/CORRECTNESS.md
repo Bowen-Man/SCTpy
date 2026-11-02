@@ -162,3 +162,25 @@ implementation therefore remains `unknown`; the next safe step is additional
 black-box experiments or an independently published algorithmic specification,
 not source translation.
 
+## Raw-theta finite/Inf checkpoint
+
+Raw-theta comparisons now report the named finite/Inf mask separately instead
+of silently restricting every conclusion to pairs that are finite on both
+sides. On the larger fixture, Levels A and B both contain the same 150 infinite
+raw-theta genes. The native estimator contains none, so its mask Jaccard with
+either oracle is `0.0` even though the finite-pair theta rank gate passes.
+
+As a diagnostic hypothesis, the benchmark computes the method-of-moments
+estimate
+
+```text
+theta_mm = mean**2 / (variance - mean)
+```
+
+when `variance > mean`, and flags a native fit when
+`theta_mm / theta_native < 1e-3`. This selects 155 genes, 149 of which are in
+the 150-gene Level A Inf set (Jaccard `0.955128`). The high overlap confirms
+that a moment-to-fit ratio explains most of the branch difference. It is not
+an exact match because the native and oracle estimators are different, and the
+diagnostic is not yet a core postprocessing policy.
+

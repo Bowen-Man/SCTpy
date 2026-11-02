@@ -113,6 +113,12 @@ correctness report. The exact historical reference outlier algorithm is not comp
 specified by the v2 paper, so an R-compatible clean-room replacement is currently
 **unknown** rather than inferred from GPL implementation details.
 
+The differential harness also reports finite versus infinite raw-theta masks. A
+method-of-moments ratio is evaluated as a diagnostic because it explains most of the
+external oracle's Inf branch on the fixed fixture. It is not applied by the alpha core:
+the exact oracle postprocessing rule is not specified in the cited papers, and the native
+MLE is not the same estimator used by the oracle. **measured; project decision**
+
 ## Pearson residuals and v2 floor
 
 Using regularized parameters:
