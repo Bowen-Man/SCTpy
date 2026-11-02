@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -393,7 +394,7 @@ def main() -> None:
     }
     report = {
         "schema_version": 1,
-        "generated_on": "2026-11-02",
+        "generated_on": datetime.now(timezone.utc).date().isoformat(),
         "fit_method": args.fit_method,
         "cox_reid_gene_bin_size": args.cox_reid_gene_bin_size,
         "dispersion_regularization": args.dispersion_regularization,

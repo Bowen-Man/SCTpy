@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -99,7 +100,7 @@ def main() -> None:
         {
             "schema_version": 1,
             "generator": "benchmarks.generate_fixture.generate_counts/v1",
-            "generated_on": "2026-11-02",
+            "generated_on": datetime.now(timezone.utc).date().isoformat(),
             "seed": args.seed,
             "shape_genes_by_cells": [args.genes, args.cells],
             "dtype": str(counts.dtype),

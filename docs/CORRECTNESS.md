@@ -115,6 +115,20 @@ python -m benchmarks.compare_correctness --fixture benchmark-results/large/fixtu
 
 The R and Level-B commands intentionally require separately installed external oracles.
 
+## Nightly external-oracle gate
+
+The `R oracle nightly` workflow runs the larger fixture once per day and on manual
+dispatch. Its isolated Ubuntu job fixes R 4.5.2, `sctransform` 0.4.3, `glmGamPoi` 1.22.0,
+`matrixStats` 1.5.0, and the Level-B commit named above. It regenerates the fixture,
+exports both black-box oracles, enforces the full differential comparison, and runs the
+regularization and residual reinjection checks.
+
+The R and Level-B packages exist only in that job. They are not package, build, or normal
+test dependencies. The workflow uploads only compact JSON/TSV diagnostics and provenance
+for 14 days; it does not upload the full residual matrix or an oracle binary. Package
+version drift is a hard failure that requires an explicit oracle update rather than a
+silent change in the numerical baseline.
+
 ## Stage-wise diagnostic contract
 
 The same comparison command now emits a versioned `stages` record without changing any
