@@ -82,8 +82,10 @@ optional microbenchmark; PyTorch is not a dependency or backend.
 
 ## Remaining P0 work
 
-1. Export a versioned stage-wise diagnostic record with mask accounting and top-error
-   genes.
-2. Add preliminary offset-intercept iteration tracing as an opt-in diagnostic, then test
+The differential report now exports a versioned stage record with input/selection
+provenance, numeric masks, appropriate relative errors, convergence summaries, top-error
+genes, and complete HVG rank agreement.
+
+1. Add preliminary offset-intercept iteration tracing as an opt-in diagnostic, then test
    the stopping-order hypothesis without changing production numerics.
-3. Add licensed real-data provenance and validation before generalizing fixture results.
+2. Add licensed real-data provenance and validation before generalizing fixture results.

@@ -45,6 +45,7 @@ residuals <- result[["y"]]
 genes <- rownames(model_fit)
 cells <- colnames(residuals)
 raw_genes <- rownames(model_raw)
+fit_cells <- result[["cells_step1"]]
 outlier_mask <- result[["model_pars_outliers"]]
 if (is.null(names(outlier_mask)) || anyNA(outlier_mask)) {
   stop("oracle returned an invalid model_pars_outliers vector")
@@ -58,6 +59,7 @@ hvg_order <- order(
 writeLines(genes, file.path(output_dir, "genes.txt"), useBytes = TRUE)
 writeLines(cells, file.path(output_dir, "cells.txt"), useBytes = TRUE)
 writeLines(raw_genes, file.path(output_dir, "fit_genes.txt"), useBytes = TRUE)
+writeLines(fit_cells, file.path(output_dir, "fit_cells.txt"), useBytes = TRUE)
 writeLines(genes[hvg_order], file.path(output_dir, "hvg_genes.txt"), useBytes = TRUE)
 writeLines(
   names(outlier_mask)[outlier_mask],
@@ -89,6 +91,7 @@ metadata <- c(
   paste("genes", length(genes), sep = "\t"),
   paste("cells", length(cells), sep = "\t"),
   paste("fit_genes", length(raw_genes), sep = "\t"),
+  paste("fit_cells", length(fit_cells), sep = "\t"),
   paste("parameter_outliers", sum(outlier_mask), sep = "\t"),
   paste("elapsed_seconds", format(elapsed, digits = 17), sep = "\t"),
   paste("generated_on", "2026-11-02", sep = "\t")

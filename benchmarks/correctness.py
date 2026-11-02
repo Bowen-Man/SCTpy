@@ -22,6 +22,8 @@ def numeric_metrics(
 ) -> dict[str, float | int | None]:
     left = np.asarray(left, dtype=np.float64).ravel()
     right = np.asarray(right, dtype=np.float64).ravel()
+    if left.shape != right.shape:
+        raise ValueError("numeric arrays must have identical shapes")
     finite = np.isfinite(left) & np.isfinite(right)
     left = left[finite]
     right = right[finite]
@@ -59,6 +61,109 @@ def numeric_metrics(
         "pearson": pearson,
         "spearman": spearman,
     }
+
+
+def numeric_mask_metrics(left: np.ndarray, right: np.ndarray) -> dict[str, Any]:
+    """Compare finite, infinite, and NaN classifications without dropping values."""
+    left = np.asarray(left, dtype=np.float64).ravel()
+    right = np.asarray(right, dtype=np.float64).ravel()
+    if left.shape != right.shape:
+        raise ValueError("numeric arrays must have identical shapes")
+
+    def labels(values: np.ndarray) -> np.ndarray:
+        output = np.zeros(values.shape, dtype=np.int8)
+        output[np.isposinf(values)] = 1
+        output[np.isneginf(values)] = 2
+        output[np.isnan(values)] = 3
+        return output
+
+    left_labels = labels(left)
+    right_labels = labels(right)
+    names = ("finite", "positive_infinity", "negative_infinity", "nan")
+    return {
+        "left": {
+            name: int(np.count_nonzero(left_labels == index))
+            for index, name in enumerate(names)
+        },
+        "right": {
+            name: int(np.count_nonzero(right_labels == index))
+            for index, name in enumerate(names)
+        },
+        "mismatch_count": int(np.count_nonzero(left_labels != right_labels)),
+        "exact": bool(np.array_equal(left_labels, right_labels)),
+    }
+
+
+def relative_error_metrics(
+    left: np.ndarray, right: np.ndarray
+) -> dict[str, float | int]:
+    """Report absolute relative error where the reference is finite and nonzero."""
+    left = np.asarray(left, dtype=np.float64).ravel()
+    right = np.asarray(right, dtype=np.float64).ravel()
+    if left.shape != right.shape:
+        raise ValueError("numeric arrays must have identical shapes")
+    valid = np.isfinite(left) & np.isfinite(right) & (right != 0.0)
+    error = np.abs(left[valid] - right[valid]) / np.abs(right[valid])
+    if error.size == 0:
+        return {
+            "n": 0,
+            "mean": float("nan"),
+            "median": float("nan"),
+            "max": float("nan"),
+        }
+    return {
+        "n": int(error.size),
+        "mean": float(np.mean(error)),
+        "median": float(np.median(error)),
+        "max": float(np.max(error)),
+    }
+
+
+def top_absolute_errors(
+    names: Sequence[str], left: np.ndarray, right: np.ndarray, *, limit: int = 10
+) -> list[dict[str, float | str]]:
+    """Return deterministic largest finite absolute errors for named values."""
+    left = np.asarray(left, dtype=np.float64).ravel()
+    right = np.asarray(right, dtype=np.float64).ravel()
+    if left.shape != right.shape or left.size != len(names):
+        raise ValueError("names and numeric arrays must have identical lengths")
+    finite = np.isfinite(left) & np.isfinite(right)
+    indices = np.flatnonzero(finite)
+    difference = np.abs(left[indices] - right[indices])
+    order = np.lexsort((np.asarray(names, dtype=str)[indices], -difference))[:limit]
+    return [
+        {
+            "name": str(names[index]),
+            "left": float(left[index]),
+            "right": float(right[index]),
+            "absolute_error": float(abs(left[index] - right[index])),
+        }
+        for index in indices[order]
+    ]
+
+
+def top_row_rmse(
+    names: Sequence[str], left: np.ndarray, right: np.ndarray, *, limit: int = 10
+) -> list[dict[str, float | str]]:
+    """Rank named matrix rows by finite paired RMSE."""
+    left = np.asarray(left, dtype=np.float64)
+    right = np.asarray(right, dtype=np.float64)
+    if left.shape != right.shape or left.ndim != 2 or left.shape[0] != len(names):
+        raise ValueError("names and matrices must have compatible identical shapes")
+    finite = np.isfinite(left) & np.isfinite(right)
+    count = np.sum(finite, axis=1)
+    difference = np.zeros(left.shape, dtype=np.float64)
+    np.subtract(left, right, out=difference, where=finite)
+    squared = np.sum(difference**2, axis=1)
+    rmse = np.full(left.shape[0], np.nan, dtype=np.float64)
+    np.divide(squared, count, out=rmse, where=count > 0)
+    rmse = np.sqrt(rmse)
+    indices = np.flatnonzero(np.isfinite(rmse))
+    order = np.lexsort((np.asarray(names, dtype=str)[indices], -rmse[indices]))[:limit]
+    return [
+        {"name": str(names[index]), "rmse": float(rmse[index])}
+        for index in indices[order]
+    ]
 
 
 def jaccard(left: Sequence[str], right: Sequence[str]) -> float:

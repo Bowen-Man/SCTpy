@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -11,13 +13,17 @@ from scipy import sparse
 from sctransform_native import SCTConfig, fit_transform
 from sctransform_native._fit import theta_moment_ratio_mask
 
-from ._common import load_fixture, load_manifest, write_json
+from ._common import count_sha256, load_fixture, load_manifest, write_json
 from .correctness import (
     THRESHOLDS,
     gate_metrics,
     jaccard,
     named_set_metrics,
+    numeric_mask_metrics,
     numeric_metrics,
+    relative_error_metrics,
+    top_absolute_errors,
+    top_row_rmse,
 )
 
 THETA_MOMENT_RATIO_THRESHOLD = 1.0e-3
@@ -39,6 +45,11 @@ def load_r_oracle(path: Path) -> dict[str, Any]:
         "genes": genes,
         "cells": cells,
         "fit_genes": fit_genes,
+        "fit_cells": (
+            _read_lines(path / "fit_cells.txt")
+            if (path / "fit_cells.txt").exists()
+            else None
+        ),
         "regularized_intercept": np.fromfile(
             path / "regularized_intercept.f64", dtype="<f8"
         ),
@@ -70,6 +81,9 @@ def load_reference(path: Path) -> dict[str, Any]:
         reference = {key: value[key] for key in value.files}
     reference["raw_infinite_theta_genes"] = np.asarray(reference["fit_genes"])[
         np.isinf(reference["raw_theta"])
+    ]
+    reference["fit_cells"] = np.asarray(reference["cells"])[
+        np.asarray(reference["fit_cell_indices"], dtype=np.int64)
     ]
     return reference
 
@@ -107,16 +121,20 @@ def compare_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
         ("residual_variance", "residual_variance"),
     ):
         names_field = "fit_genes" if field == "raw_intercept" else "genes"
-        left_values, right_values, _ = _aligned(
+        left_values, right_values, names = _aligned(
             left, right, field=field, names_field=names_field
         )
         metrics = numeric_metrics(left_values, right_values)
         metrics["gate"] = gate_metrics(metrics, THRESHOLDS[threshold_name])
+        metrics["mask_agreement"] = numeric_mask_metrics(left_values, right_values)
+        metrics["top_absolute_error_genes"] = top_absolute_errors(
+            names, left_values, right_values
+        )
         report[field] = metrics
 
     for field in ("raw_theta", "regularized_theta"):
         names_field = "fit_genes" if field == "raw_theta" else "genes"
-        left_values, right_values, _ = _aligned(
+        left_values, right_values, names = _aligned(
             left, right, field=field, names_field=names_field
         )
         finite = (
@@ -129,6 +147,15 @@ def compare_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
             np.log10(left_values[finite]), np.log10(right_values[finite])
         )
         metrics["gate"] = gate_metrics(metrics, THRESHOLDS["log10_theta"])
+        metrics["mask_agreement"] = numeric_mask_metrics(left_values, right_values)
+        metrics["relative_error"] = relative_error_metrics(
+            left_values[finite], right_values[finite]
+        )
+        metrics["top_absolute_error_genes"] = top_absolute_errors(
+            tuple(np.asarray(names)[finite]),
+            np.log10(left_values[finite]),
+            np.log10(right_values[finite]),
+        )
         report[f"log10_{field}"] = metrics
 
     if "raw_infinite_theta_genes" in left and "raw_infinite_theta_genes" in right:
@@ -136,11 +163,17 @@ def compare_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
             left["raw_infinite_theta_genes"], right["raw_infinite_theta_genes"]
         )
 
-    left_residuals, right_residuals, _ = _aligned(
+    left_residuals, right_residuals, residual_genes = _aligned(
         left, right, field="residuals", names_field="genes"
     )
     residual_metrics = numeric_metrics(left_residuals, right_residuals)
     residual_metrics["gate"] = gate_metrics(residual_metrics, THRESHOLDS["residual"])
+    residual_metrics["mask_agreement"] = numeric_mask_metrics(
+        left_residuals, right_residuals
+    )
+    residual_metrics["top_gene_rmse"] = top_row_rmse(
+        residual_genes, left_residuals, right_residuals
+    )
     report["residuals"] = residual_metrics
     poisson_metrics = {
         "jaccard": jaccard(left["poisson_genes"], right["poisson_genes"])
@@ -154,6 +187,19 @@ def compare_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
 
     eligible_count = min(len(left["hvg_genes"]), len(right["hvg_genes"]))
     hvg: dict[str, Any] = {}
+    left_hvg = tuple(str(value) for value in left["hvg_genes"])
+    right_hvg = tuple(str(value) for value in right["hvg_genes"])
+    right_hvg_set = set(right_hvg)
+    common_hvg = tuple(name for name in left_hvg if name in right_hvg_set)
+    left_rank = {name: index for index, name in enumerate(left_hvg)}
+    right_rank = {name: index for index, name in enumerate(right_hvg)}
+    rank_metrics = numeric_metrics(
+        np.asarray([left_rank[name] for name in common_hvg]),
+        np.asarray([right_rank[name] for name in common_hvg]),
+    )
+    hvg["complete_order_exact"] = left_hvg == right_hvg
+    hvg["complete_gene_set"] = named_set_metrics(left_hvg, right_hvg)
+    hvg["complete_rank_spearman"] = rank_metrics["spearman"]
     for top in (1000, 2000, 3000):
         if eligible_count >= top:
             value = jaccard(left["hvg_genes"][:top], right["hvg_genes"][:top])
@@ -199,6 +245,7 @@ def native_result(
     )
     eligible_indices = np.flatnonzero(result.eligible_gene)
     fit_indices = np.flatnonzero(result.selected_gene & ~result.poisson_gene)
+    selected_indices = np.flatnonzero(result.selected_gene)
     selected_cells = np.asarray(manifest.selected_cell_indices, dtype=np.int64)
     fit_counts = counts[:, selected_cells]
     fit_mean = np.mean(fit_counts, axis=1, dtype=np.float64)
@@ -215,6 +262,14 @@ def native_result(
             threshold=THETA_MOMENT_RATIO_THRESHOLD,
         )
     raw_infinite = fit_indices[np.isinf(result.raw_theta[fit_indices])]
+    iteration_summary: dict[str, float | int | None]
+    if fit_indices.size:
+        iteration_summary = {
+            "median": float(np.median(result.fit_iterations[fit_indices])),
+            "max": int(np.max(result.fit_iterations[fit_indices])),
+        }
+    else:
+        iteration_summary = {"median": None, "max": 0}
     return (
         {
             "genes": np.asarray(result.gene_names)[eligible_indices],
@@ -239,6 +294,14 @@ def native_result(
             "outlier_genes": np.asarray(result.gene_names)[
                 np.flatnonzero(result.parameter_outlier)
             ],
+            "fit_status_counts": dict(
+                Counter(result.fit_status[index] for index in selected_indices)
+            ),
+            "converged_gene_count": int(
+                np.count_nonzero(result.converged[fit_indices])
+            ),
+            "fit_gene_count": int(fit_indices.size),
+            "fit_iterations": iteration_summary,
         },
         result.timing,
     )
@@ -299,6 +362,30 @@ def main() -> None:
         regularization_support=args.regularization_support,
         theta_postprocess=args.theta_postprocess,
     )
+    counts, fixture_genes, fixture_cells = load_fixture(args.fixture)
+    manifest = load_manifest(args.manifest)
+    level_c_vs_level_a = compare_pair(level_c, level_a)
+    level_c_vs_level_b = compare_pair(level_c, level_b)
+    level_a_fit_cells = level_a.get("fit_cells")
+    selection_stage = {
+        "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(),
+        "algorithm": manifest.algorithm,
+        "selected_gene_count": len(manifest.selected_gene_indices),
+        "selected_cell_count": len(manifest.selected_cell_indices),
+        "raw_fit_gene_set": named_set_metrics(
+            level_c["fit_genes"], level_a["fit_genes"]
+        ),
+        "fit_cell_order_exact": (
+            None
+            if level_a_fit_cells is None
+            else tuple(manifest.selected_cell_names)
+            == tuple(str(value) for value in level_a_fit_cells)
+        ),
+        "fit_cell_oracle_status": (
+            "not_exported" if level_a_fit_cells is None else "available"
+        ),
+        "cross_language_seed_comparison": "not_used; manifest names define selection",
+    }
     report = {
         "schema_version": 1,
         "generated_on": "2026-11-02",
@@ -310,13 +397,46 @@ def main() -> None:
         "theta_moment_ratio_threshold": THETA_MOMENT_RATIO_THRESHOLD,
         "thresholds_preregistered": THRESHOLDS,
         "level_b_vs_level_a": compare_pair(level_b, level_a),
-        "level_c_vs_level_a": compare_pair(level_c, level_a),
-        "level_c_vs_level_b": compare_pair(level_c, level_b),
+        "level_c_vs_level_a": level_c_vs_level_a,
+        "level_c_vs_level_b": level_c_vs_level_b,
         "theta_moment_ratio_vs_level_a_raw_infinite": named_set_metrics(
             level_c["theta_moment_ratio_genes"],
             level_a["raw_infinite_theta_genes"],
         ),
         "level_c_timing_seconds": native_timing,
+        "stages": {
+            "input": {
+                "shape_genes_by_cells": list(counts.shape),
+                "counts_sha256": count_sha256(counts),
+                "fixture_gene_count": len(fixture_genes),
+                "fixture_cell_count": len(fixture_cells),
+                "oracle_cell_order_exact": tuple(level_a["cells"]) == fixture_cells,
+            },
+            "selection": selection_stage,
+            "raw_fitting": {
+                "intercept": level_c_vs_level_a["raw_intercept"],
+                "log10_theta": level_c_vs_level_a["log10_raw_theta"],
+                "infinite_theta_genes": level_c_vs_level_a["raw_infinite_theta_genes"],
+                "level_c_optimizer": {
+                    "fit_gene_count": level_c["fit_gene_count"],
+                    "converged_gene_count": level_c["converged_gene_count"],
+                    "status_counts": level_c["fit_status_counts"],
+                    "iterations": level_c["fit_iterations"],
+                },
+                "level_a_optimizer_status": "not_exposed_by_oracle_artifact",
+            },
+            "regularization": {
+                "intercept": level_c_vs_level_a["regularized_intercept"],
+                "log10_theta": level_c_vs_level_a["log10_regularized_theta"],
+                "parameter_outliers": level_c_vs_level_a.get("parameter_outliers"),
+            },
+            "residual": {
+                "matrix": level_c_vs_level_a["residuals"],
+                "mean": level_c_vs_level_a["residual_mean"],
+                "variance": level_c_vs_level_a["residual_variance"],
+            },
+            "hvg": level_c_vs_level_a["hvg"],
+        },
     }
     gates = _all_gates(report["level_c_vs_level_a"]) + _all_gates(
         report["level_c_vs_level_b"]
