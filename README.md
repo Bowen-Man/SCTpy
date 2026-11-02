@@ -25,6 +25,7 @@ their contracts are independently verified.
 See:
 
 - [implementation survey](docs/IMPLEMENTATION_SURVEY.md)
+- [current state assessment](docs/CURRENT_STATE.md)
 - [SCT v2 contract](docs/SCT_V2_SPEC.md)
 - [CPU alpha API](docs/CPU_API.md)
 - [correctness gate](docs/CORRECTNESS.md)
@@ -43,12 +44,16 @@ result = fit_transform(
     gene_names=gene_names,
     cell_names=cell_names,
     matrix_orientation="genes_by_cells",
-    config=SCTConfig(seed=1448145),
+    config=SCTConfig.r_v2(seed=1448145),
 )
 
 residuals = result.residuals
 hvg_2000 = result.highly_variable_genes(2000)
 ```
+
+`SCTConfig.r_v2()` selects the validated R-v2 compatibility path. Plain `SCTConfig()`
+retains the original native research defaults for API compatibility; mixed, unvalidated
+algorithm combinations are reported as `config.statistical_mode == "experimental"`.
 
 ## Development
 

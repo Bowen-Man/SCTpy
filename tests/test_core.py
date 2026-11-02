@@ -159,20 +159,16 @@ def test_cox_reid_v2_path_is_explicit() -> None:
         counts,
         gene_names=genes,
         cell_names=cells,
-        config=SCTConfig(
+        config=SCTConfig.r_v2(
             min_cells=5,
             n_genes=None,
             n_cells=None,
-            fit_method="cox_reid",
-            dispersion_regularization="sct_v2",
-            regularization_method="r_stats",
-            regularization_support="clamp",
-            theta_postprocess="moment_ratio",
         ),
     )
 
     modeled = result.eligible_gene & ~result.poisson_gene
     assert result.config.fit_method == "cox_reid"
+    assert result.config.statistical_mode == "r_v2"
     assert np.all(result.converged[result.selected_gene & ~result.poisson_gene])
     assert np.all(np.isfinite(result.regularized_intercept[modeled]))
     assert np.all(np.isfinite(result.regularized_theta[modeled]))

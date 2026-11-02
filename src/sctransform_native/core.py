@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from time import perf_counter
+from typing import Literal
 
 import numpy as np
 
@@ -37,6 +38,8 @@ from .selection import (
     validate_selection_manifest,
 )
 
+StatisticalMode = Literal["native", "r_v2", "experimental"]
+
 
 @dataclass(frozen=True)
 class SCTConfig:
@@ -59,6 +62,54 @@ class SCTConfig:
     optimizer_ftol: float = 1e-10
     optimizer_gtol: float = 1e-6
     residual_block_size: int = 256
+
+    @classmethod
+    def r_v2(
+        cls,
+        *,
+        min_cells: int = 5,
+        n_genes: int | None = 2000,
+        n_cells: int | None = 2000,
+        seed: int = 1448145,
+        residual_block_size: int = 256,
+    ) -> SCTConfig:
+        """Build the validated R-v2 compatibility configuration."""
+        return cls(
+            min_cells=min_cells,
+            n_genes=n_genes,
+            n_cells=n_cells,
+            seed=seed,
+            fit_method="cox_reid",
+            dispersion_regularization="sct_v2",
+            regularization_method="r_stats",
+            regularization_support="clamp",
+            theta_postprocess="moment_ratio",
+            residual_block_size=residual_block_size,
+        )
+
+    @property
+    def statistical_mode(self) -> StatisticalMode:
+        """Classify the selected statistical path without changing its behavior."""
+        signature = (
+            self.fit_method,
+            self.dispersion_regularization,
+            self.regularization_method,
+            self.regularization_support,
+            self.theta_postprocess,
+        )
+        if signature == ("nb_mle", "native", "native", "extrapolate", "none"):
+            return "native"
+        if (
+            signature == ("cox_reid", "sct_v2", "r_stats", "clamp", "moment_ratio")
+            and self.clip_range is None
+            and self.bandwidth_adjust == 3.0
+            and self.outlier_mad_threshold == 10.0
+            and self.theta_moment_ratio_threshold == 1.0e-3
+            and self.theta_min == 1.0e-4
+            and self.theta_max == 1.0e8
+        ):
+            return "r_v2"
+        return "experimental"
 
     def __post_init__(self) -> None:
         if self.min_cells < 1:

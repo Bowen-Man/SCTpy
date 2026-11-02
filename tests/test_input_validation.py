@@ -85,6 +85,43 @@ def test_unknown_theta_postprocess_is_rejected() -> None:
         SCTConfig(theta_postprocess="unknown")  # type: ignore[arg-type]
 
 
+def test_r_v2_preset_is_fixed_and_sampling_is_configurable() -> None:
+    config = SCTConfig.r_v2(
+        min_cells=7,
+        n_genes=None,
+        n_cells=500,
+        seed=42,
+        residual_block_size=64,
+    )
+
+    assert config.statistical_mode == "r_v2"
+    assert config.min_cells == 7
+    assert config.n_genes is None
+    assert config.n_cells == 500
+    assert config.seed == 42
+    assert config.residual_block_size == 64
+    assert config.fit_method == "cox_reid"
+    assert config.dispersion_regularization == "sct_v2"
+    assert config.regularization_method == "r_stats"
+    assert config.regularization_support == "clamp"
+    assert config.theta_postprocess == "moment_ratio"
+    assert config.theta_moment_ratio_threshold == 1.0e-3
+
+
+def test_statistical_modes_do_not_change_the_default_path() -> None:
+    assert SCTConfig().statistical_mode == "native"
+    assert SCTConfig(fit_method="cox_reid").statistical_mode == "experimental"
+    assert SCTConfig.r_v2().statistical_mode == "r_v2"
+    assert SCTConfig.r_v2().clip_range is None
+    assert SCTConfig.r_v2() == SCTConfig(
+        fit_method="cox_reid",
+        dispersion_regularization="sct_v2",
+        regularization_method="r_stats",
+        regularization_support="clamp",
+        theta_postprocess="moment_ratio",
+    )
+
+
 @pytest.mark.parametrize(
     ("keyword", "message"),
     [
