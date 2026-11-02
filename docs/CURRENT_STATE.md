@@ -82,10 +82,12 @@ Production execution is CPU NumPy/SciPy only. CUDA inputs are rejected at the An
 boundary rather than copied implicitly. CuPy currently appears only in an isolated,
 optional microbenchmark; PyTorch is not a dependency or backend.
 
-## Remaining P0 work
+## Next correctness work
 
 The differential report now exports a versioned stage record with input/selection
 provenance, numeric masks, appropriate relative errors, convergence summaries, top-error
 genes, and complete HVG rank agreement.
 
-1. Add licensed real-data provenance and validation before generalizing fixture results.
+P0 repository audit, compatibility preset, stage diagnostics, offset-fit diagnosis, and
+fixed-fixture non-regression are complete. The next P1 correctness task is licensed
+real-data provenance and validation before generalizing synthetic-fixture results.
