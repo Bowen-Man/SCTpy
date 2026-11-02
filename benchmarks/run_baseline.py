@@ -50,6 +50,11 @@ def _worker(
     manifest_path: Path,
     input_format: str,
     *,
+    fit_method: str,
+    dispersion_regularization: str,
+    regularization_method: str,
+    regularization_support: str,
+    theta_postprocess: str,
     trace_python_allocations: bool,
 ) -> dict[str, Any]:
     process = psutil.Process()
@@ -76,7 +81,16 @@ def _worker(
         input_matrix,
         gene_names=genes,
         cell_names=cells,
-        config=SCTConfig(min_cells=5, n_genes=None, n_cells=None),
+        config=SCTConfig(
+            min_cells=5,
+            n_genes=None,
+            n_cells=None,
+            fit_method=fit_method,
+            dispersion_regularization=dispersion_regularization,
+            regularization_method=regularization_method,
+            regularization_support=regularization_support,
+            theta_postprocess=theta_postprocess,
+        ),
         selection=manifest,
     )
     compute_wall = time.perf_counter() - compute_start
@@ -160,6 +174,29 @@ def main() -> None:
     parser.add_argument("--time-budget-seconds", type=float, default=300.0)
     parser.add_argument("--memory-budget-mib", type=float, default=4096.0)
     parser.add_argument("--trace-python-allocations", action="store_true")
+    parser.add_argument(
+        "--fit-method", choices=("nb_mle", "cox_reid"), default="nb_mle"
+    )
+    parser.add_argument(
+        "--dispersion-regularization",
+        choices=("native", "sct_v2"),
+        default="native",
+    )
+    parser.add_argument(
+        "--regularization-method",
+        choices=("native", "r_stats"),
+        default="native",
+    )
+    parser.add_argument(
+        "--regularization-support",
+        choices=("extrapolate", "clamp"),
+        default="extrapolate",
+    )
+    parser.add_argument(
+        "--theta-postprocess",
+        choices=("none", "moment_ratio"),
+        default="none",
+    )
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
@@ -170,6 +207,11 @@ def main() -> None:
                     args.fixture,
                     args.manifest,
                     args.input_format,
+                    fit_method=args.fit_method,
+                    dispersion_regularization=args.dispersion_regularization,
+                    regularization_method=args.regularization_method,
+                    regularization_support=args.regularization_support,
+                    theta_postprocess=args.theta_postprocess,
                     trace_python_allocations=args.trace_python_allocations,
                 )
             )
@@ -194,6 +236,16 @@ def main() -> None:
         str(args.manifest),
         "--input-format",
         args.input_format,
+        "--fit-method",
+        args.fit_method,
+        "--dispersion-regularization",
+        args.dispersion_regularization,
+        "--regularization-method",
+        args.regularization_method,
+        "--regularization-support",
+        args.regularization_support,
+        "--theta-postprocess",
+        args.theta_postprocess,
     ]
     if args.trace_python_allocations:
         command.append("--trace-python-allocations")
@@ -224,6 +276,13 @@ def main() -> None:
         "cpu_logical_count": psutil.cpu_count(logical=True),
         "configured_thread_environment": {
             name: environment[name] for name in THREAD_VARIABLES
+        },
+        "model": {
+            "fit_method": args.fit_method,
+            "dispersion_regularization": args.dispersion_regularization,
+            "regularization_method": args.regularization_method,
+            "regularization_support": args.regularization_support,
+            "theta_postprocess": args.theta_postprocess,
         },
         "blas_configuration": _blas_report(),
         "warmups": warmup_runs,
