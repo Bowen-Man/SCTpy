@@ -82,6 +82,35 @@ def test_cpu_core_produces_complete_float64_result() -> None:
     )
 
 
+def test_sct_v2_dispersion_regularization_is_explicit() -> None:
+    counts, genes, cells = _overdispersed_fixture()
+    native = fit_transform(
+        counts,
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig(min_cells=5, n_genes=None, n_cells=None),
+    )
+    sct_v2 = fit_transform(
+        counts,
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig(
+            min_cells=5,
+            n_genes=None,
+            n_cells=None,
+            dispersion_regularization="sct_v2",
+        ),
+        selection=native.selection,
+    )
+
+    modeled = sct_v2.eligible_gene & ~sct_v2.poisson_gene
+    assert sct_v2.config.dispersion_regularization == "sct_v2"
+    assert np.all(np.isfinite(sct_v2.regularized_theta[modeled]))
+    assert not np.allclose(
+        sct_v2.regularized_theta[modeled], native.regularized_theta[modeled]
+    )
+
+
 @pytest.mark.parametrize(
     "sparse_type",
     [

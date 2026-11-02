@@ -138,7 +138,10 @@ def compare_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
 
 
 def native_result(
-    fixture: Path, manifest_path: Path
+    fixture: Path,
+    manifest_path: Path,
+    *,
+    dispersion_regularization: str = "native",
 ) -> tuple[dict[str, Any], dict[str, float]]:
     counts, genes, cells = load_fixture(fixture)
     manifest = load_manifest(manifest_path)
@@ -146,7 +149,12 @@ def native_result(
         sparse.csr_matrix(counts),
         gene_names=genes,
         cell_names=cells,
-        config=SCTConfig(min_cells=5, n_genes=None, n_cells=None),
+        config=SCTConfig(
+            min_cells=5,
+            n_genes=None,
+            n_cells=None,
+            dispersion_regularization=dispersion_regularization,
+        ),
         selection=manifest,
     )
     eligible_indices = np.flatnonzero(result.eligible_gene)
@@ -190,15 +198,25 @@ def main() -> None:
     parser.add_argument("--r-oracle", type=Path, required=True)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--dispersion-regularization",
+        choices=("native", "sct_v2"),
+        default="native",
+    )
     parser.add_argument("--enforce", action="store_true")
     args = parser.parse_args()
 
     level_a = load_r_oracle(args.r_oracle)
     level_b = load_reference(args.reference)
-    level_c, native_timing = native_result(args.fixture, args.manifest)
+    level_c, native_timing = native_result(
+        args.fixture,
+        args.manifest,
+        dispersion_regularization=args.dispersion_regularization,
+    )
     report = {
         "schema_version": 1,
         "generated_on": "2026-11-02",
+        "dispersion_regularization": args.dispersion_regularization,
         "thresholds_preregistered": THRESHOLDS,
         "level_b_vs_level_a": compare_pair(level_b, level_a),
         "level_c_vs_level_a": compare_pair(level_c, level_a),

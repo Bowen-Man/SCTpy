@@ -79,14 +79,29 @@ od_g = log10(m_g / theta_g)
 ```
 
 and independently smooths `beta_g0` and `od_g` as functions of `x_g`. Then
-`theta_fit_g = m_g / 10**od_fit_g`. The smoother, bandwidth, support checks, and outlier
+`theta_fit_g = m_g / 10**od_fit_g`. This remains the default `native` alpha contract.
+
+An explicit `sct_v2` dispersion regularization option instead uses the dimensionless
+NB2 variance factor and the geometric abundance measure described by Choudhary and
+Satija (2022):
+
+```text
+od_g = log10(1 + gmean_g / theta_g)
+theta_fit_g = gmean_g / (10**od_fit_g - 1)
+```
+
+The implementation evaluates these expressions with `log1p` and `expm1` for stability.
+This option changes only the dispersion target and inverse transform; it is not described
+as full R compatibility because fitting, selection, outlier detection, and smoothing
+remain independently specified. The smoother, bandwidth, support checks, and outlier
 policy are configuration recorded in results. The implementation uses a Gaussian
 Nadaraya-Watson smoother and an independent implementation of the published
 Sheather--Jones solve-the-equation selector, including diagonal terms, with the configured
 default adjustment of 3. The selector is derived from equations 12--13 of Sheather and
 Jones ([1991](https://doi.org/10.1111/j.2517-6161.1991.tb01857.x)), not from GPL source.
-**confirmed from paper and official documentation;
-project decision** for the numerical blocking and root solver.
+**confirmed from paper and official documentation** for geometric-mean regularization and
+the NB2 variance factor; **project decision** for the transform switch, stable arithmetic,
+numerical blocking, and root solver.
 
 Poisson-like genes retain `theta=infinity` and the analytic intercept. Failed NB fits are
 never silently regularized; they are flagged and excluded from the smoothing training set.
