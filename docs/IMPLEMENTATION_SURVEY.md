@@ -70,4 +70,8 @@ equivalent. **confirmed from paper and official documentation**
   cells-by-genes adapter.
 - Do not implement corrected UMI, batch effects, or extra covariates in the first alpha.
 - Record selection indices and names in a manifest; never rely on an implicit RNG stream.
+- Follow the official v2 selection order: sample cells, recheck `min_cells`, exclude
+  non-overdispersed genes, then inverse-density sample by log geometric mean. Use a named
+  PCG64 stream rather than adding an R RNG compatibility layer. **confirmed from official
+  source; project decision** for the RNG.
 - Do not add a GPU implementation until CPU stage timings demonstrate a target.

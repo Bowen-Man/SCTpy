@@ -30,9 +30,25 @@ min_cells, requested_genes, requested_cells
 
 Callers may supply a complete manifest, in which case no random sampling occurs. Generated
 manifests use NumPy's documented `Generator(PCG64(seed))`; sorted selected indices define
-the execution order. The initial alpha may select uniformly until a density-dependent
-selection rule is independently specified and validated. This difference must be visible
-in `algorithm`, never implicit. **project decision; unknown** reference sampling details.
+the execution order. Cells are sampled first. Gene detection is then recomputed within
+those cells without densifying a sparse matrix, and genes below `min_cells` are excluded
+from step-one fitting. Genes whose full-data variance does not exceed their mean are also
+excluded from the fitted-gene pool. If a gene limit remains, sampling probabilities are
+proportional to the inverse of a Gaussian density estimate over log10 geometric mean. The
+estimator uses the documented `bw.nrd` scale and a 512-point linearly binned grid.
+**confirmed from official source** for the order and inverse-density rule; **project
+decision** for PCG64, the independent grid implementation, deterministic sorting, and
+numerical fallbacks.
+
+A fixed R 4.5.2 black-box golden for inverse-density probabilities is covered by unit
+tests. On an additional 41-point clustered/outlier probe, native versus R probabilities
+had Pearson correlation `0.999999984`, Spearman correlation `0.998258`, and maximum
+absolute error `6.76e-05`. **measured on 2026-11-02**
+
+The native RNG is deliberately not an R-RNG compatibility layer, so identical seeds do
+not imply identical sampled names across languages. Oracle comparisons therefore persist
+and replay one manifest. The algorithm field
+`sct_v2_inverse_density_pcg64_v1` makes this boundary explicit. **project decision**
 
 ## Statistical model
 
@@ -61,7 +77,7 @@ intercepts. **confirmed from official source and measured**
 
 ## Poisson-like genes
 
-Let `m_g` be the arithmetic mean across the fit cells and `s_g^2` the sample variance
+Let `m_g` be the arithmetic mean across all cells and `s_g^2` the sample variance
 (`ddof=1`). A gene is Poisson-like when `m_g < 0.001` or `s_g^2 <= m_g`. Such a gene is
 excluded from NB parameter regularization, receives `theta_g = infinity`, and uses the
 analytic offset intercept:
@@ -70,9 +86,15 @@ analytic offset intercept:
 beta_g0 = log(sum_c X_gc / sum_c n_c).
 ```
 
-For an all-zero gene the intercept is `-infinity` and `mu` is exactly zero. **confirmed
-from paper** for the rule and analytic intercept; explicit zero representation is a
-**project decision**.
+For an all-zero gene the intercept is `-infinity` and `mu` is exactly zero. Selection may
+subsample cells for NB fitting, but this classification, the Poisson intercept, and the
+abundance statistics used by regularization remain full-data quantities. **confirmed from
+paper and official source** for the rule, data scope, and analytic intercept; explicit zero
+representation is a **project decision**.
+
+The two upstream stages remain distinct: a low-mean gene with variance above its mean may
+receive a raw step-one fit, but its final regularized theta is infinity and its final
+intercept is the full-data analytic offset. **confirmed from official source**
 
 ## Regularization
 

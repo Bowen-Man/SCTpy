@@ -41,11 +41,30 @@ def test_all_poisson_path_matches_closed_form_residuals() -> None:
     assert_array_equal(result.poisson_gene, np.array([True, True]))
     assert_allclose(result.raw_intercept, np.log(0.5))
     assert_array_equal(result.raw_theta, np.array([np.inf, np.inf]))
+    assert result.selection.selected_gene_indices == ()
     expected = (counts - 0.5) / np.sqrt(0.5)
     assert_allclose(result.residuals, expected)
     assert result.nonzero_median == 1.0
     assert result.regularization_bandwidth is None
     assert_array_equal(result.hvg_order, np.array([0, 1]))
+
+
+def test_low_mean_overdispersed_gene_keeps_raw_fit_but_is_final_poisson() -> None:
+    counts = np.zeros((2, 3000), dtype=np.int64)
+    counts[0, 0] = 2
+    counts[1] = 1
+    result = fit_transform(
+        counts,
+        gene_names=("rare_burst", "constant"),
+        cell_names=tuple(f"c{index}" for index in range(counts.shape[1])),
+        config=SCTConfig(min_cells=1, n_genes=None, n_cells=None),
+    )
+
+    assert result.selection.selected_gene_indices == (0,)
+    assert result.converged[0]
+    assert np.isfinite(result.raw_theta[0])
+    assert result.poisson_gene[0]
+    assert np.isinf(result.regularized_theta[0])
 
 
 def test_cpu_core_produces_complete_float64_result() -> None:

@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+from scipy.ndimage import gaussian_filter1d
+
+from ._matrix import CountMatrix, matrix_detection_count
 
 
 @dataclass(frozen=True)
@@ -73,38 +76,61 @@ class SelectionManifest:
 
 def create_selection_manifest(
     *,
+    counts_gxc: CountMatrix,
     gene_names: Sequence[str],
     cell_names: Sequence[str],
     eligible_genes: np.ndarray,
+    geometric_mean: np.ndarray,
     min_cells: int,
     requested_genes: int | None,
     requested_cells: int | None,
     seed: int,
 ) -> SelectionManifest:
-    """Select without replacement using a named, reproducible PCG64 stream."""
+    """Create the independently specified v2 cell/gene selection manifest."""
+    genes, cells = counts_gxc.shape
+    if genes != len(gene_names) or cells != len(cell_names):
+        raise ValueError("count matrix shape does not match gene and cell names")
+    if eligible_genes.shape != (genes,) or geometric_mean.shape != (genes,):
+        raise ValueError("gene selection arrays must match the number of genes")
+
     rng = np.random.Generator(np.random.PCG64(seed))
-    eligible_indices = np.flatnonzero(eligible_genes)
-    gene_count = (
-        eligible_indices.size
-        if requested_genes is None
-        else min(requested_genes, eligible_indices.size)
-    )
     cell_count = (
-        len(cell_names)
+        cells
         if requested_cells is None
-        else min(requested_cells, len(cell_names))
+        else min(requested_cells, cells)
     )
-    selected_genes = np.sort(
-        rng.choice(eligible_indices, size=gene_count, replace=False)
+    selected_cells = (
+        np.arange(cells, dtype=np.int64)
+        if cell_count == cells
+        else np.sort(rng.choice(cells, size=cell_count, replace=False))
     )
-    selected_cells = np.sort(
-        rng.choice(len(cell_names), size=cell_count, replace=False)
+
+    detected = matrix_detection_count(counts_gxc[:, selected_cells])
+    candidates = np.flatnonzero(eligible_genes & (detected >= min_cells))
+    gene_count = (
+        candidates.size
+        if requested_genes is None
+        else min(requested_genes, candidates.size)
     )
+    if gene_count == candidates.size:
+        selected_genes = candidates
+    else:
+        abundance = np.log10(
+            np.maximum(geometric_mean[candidates], np.finfo(np.float64).tiny)
+        )
+        selected_genes = np.sort(
+            rng.choice(
+                candidates,
+                size=gene_count,
+                replace=False,
+                p=_inverse_density_weights(abundance),
+            )
+        )
     return SelectionManifest(
         schema_version=1,
         seed=seed,
-        algorithm="uniform_without_replacement_pcg64_v1",
-        source_shape=(len(gene_names), len(cell_names)),
+        algorithm="sct_v2_inverse_density_pcg64_v1",
+        source_shape=(genes, cells),
         selected_gene_indices=tuple(int(item) for item in selected_genes),
         selected_gene_names=tuple(gene_names[item] for item in selected_genes),
         selected_cell_indices=tuple(int(item) for item in selected_cells),
@@ -113,6 +139,39 @@ def create_selection_manifest(
         requested_genes=requested_genes,
         requested_cells=requested_cells,
     )
+
+
+def _inverse_density_weights(values: np.ndarray) -> np.ndarray:
+    """Return stable inverse Gaussian-density weights on a 512-point grid."""
+    size = values.size
+    if size < 2 or np.all(values == values[0]):
+        return np.full(size, 1.0 / size, dtype=np.float64)
+
+    quartiles = np.quantile(values, (0.25, 0.75))
+    scale = min(float(np.std(values, ddof=1)), float(np.diff(quartiles)[0] / 1.34))
+    bandwidth = 1.06 * scale * size ** (-0.2)
+    if not np.isfinite(bandwidth) or bandwidth <= 0.0:
+        return np.full(size, 1.0 / size, dtype=np.float64)
+
+    lower = float(np.min(values) - 3.0 * bandwidth)
+    upper = float(np.max(values) + 3.0 * bandwidth)
+    grid = np.linspace(lower, upper, 512)
+    spacing = grid[1] - grid[0]
+    position = (values - lower) / spacing
+    left = np.minimum(position.astype(np.int64), grid.size - 2)
+    fraction = position - left
+    binned = np.zeros(grid.size, dtype=np.float64)
+    np.add.at(binned, left, 1.0 - fraction)
+    np.add.at(binned, left + 1, fraction)
+    density = gaussian_filter1d(
+        binned / (size * spacing),
+        bandwidth / spacing,
+        mode="constant",
+        truncate=4.0,
+    )
+    sampled_density = np.interp(values, grid, density)
+    weights = 1.0 / (sampled_density + np.finfo(np.float64).eps)
+    return weights / np.sum(weights)
 
 
 def validate_selection_manifest(
@@ -136,8 +195,6 @@ def validate_selection_manifest(
         )
     gene_indices = np.asarray(manifest.selected_gene_indices, dtype=np.int64)
     cell_indices = np.asarray(manifest.selected_cell_indices, dtype=np.int64)
-    if gene_indices.size == 0:
-        raise ValueError("selection must include at least one gene")
     if cell_indices.size < 2:
         raise ValueError("selection must include at least two cells")
     if np.any(gene_indices < 0) or np.any(gene_indices >= len(gene_names)):

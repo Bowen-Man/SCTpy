@@ -14,6 +14,12 @@ exporter explicitly removes genes selected by the documented Poisson rule from t
 candidate list. The original manifest hash and this adapter are recorded in provenance;
 Level C consumes the persisted manifest directly.
 
+The default native generator now follows the v2 cell-first and inverse-density selection
+semantics, but correctness gates continue to replay the persisted manifest rather than
+compare language-specific random streams. A regression run after this change preserved
+all small and large fixture gates, including exact large-fixture HVG Top 1000/2000/3000.
+**measured on 2026-11-02**
+
 | Fixture | Shape (genes x cells) | Eligible genes | Counts SHA-256 |
 |---|---:|---:|---|
 | small | 800 x 240 | 778 | `daa4251f89ad449d0508ebef01bca762ea3960830b0160623d809db1131c2337` |
