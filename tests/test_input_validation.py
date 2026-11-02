@@ -70,6 +70,11 @@ def test_unknown_regularization_support_is_rejected() -> None:
         SCTConfig(regularization_support="unknown")  # type: ignore[arg-type]
 
 
+def test_unknown_theta_postprocess_is_rejected() -> None:
+    with pytest.raises(ValueError, match="theta_postprocess"):
+        SCTConfig(theta_postprocess="unknown")  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     ("keyword", "message"),
     [

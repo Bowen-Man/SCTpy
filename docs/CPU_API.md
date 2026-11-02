@@ -41,7 +41,8 @@ perform device movement themselves.
 - input statistics and ordered names;
 - the complete `SelectionManifest`;
 - raw intercept/theta fits and convergence diagnostics;
-- fixed slopes, Poisson flags, regularized parameters, and outlier flags;
+- fixed slopes, Poisson flags, theta-postprocess flags, regularized parameters, and
+  outlier flags;
 - clipped Pearson residuals, residual mean/variance, and deterministic HVG order.
 
 Genes below `min_cells` remain visible with `fit_status="insufficient_cells"`, NaN
@@ -64,6 +65,14 @@ Kernel predictions use `regularization_support="extrapolate"` by default. Set th
 to `"clamp"` to evaluate genes outside the training abundance range at the nearest
 training boundary. Device placement and matrix orientation are unaffected by this scalar
 coordinate policy.
+
+Theta postprocessing is disabled by default. The experimental
+`theta_postprocess="moment_ratio"` policy compares the method-of-moments theta
+with each converged native fit, using the recorded
+`theta_moment_ratio_threshold` (default `1e-3`). Flagged raw theta values become
+infinite, are exposed through `result.theta_postprocessed`, and are excluded
+from smoother training while still receiving regularized predictions. This is
+a native research policy, not a claim of estimator-level R compatibility.
 
 ## Deliberately unsupported
 

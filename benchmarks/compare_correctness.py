@@ -9,6 +9,7 @@ import numpy as np
 from scipy import sparse
 
 from sctransform_native import SCTConfig, fit_transform
+from sctransform_native._fit import theta_moment_ratio_mask
 
 from ._common import load_fixture, load_manifest, write_json
 from .correctness import (
@@ -17,7 +18,6 @@ from .correctness import (
     jaccard,
     named_set_metrics,
     numeric_metrics,
-    theta_moment_ratio_mask,
 )
 
 THETA_MOMENT_RATIO_THRESHOLD = 1.0e-3
@@ -174,6 +174,7 @@ def native_result(
     *,
     dispersion_regularization: str = "native",
     regularization_support: str = "extrapolate",
+    theta_postprocess: str = "none",
 ) -> tuple[dict[str, Any], dict[str, float]]:
     counts, genes, cells = load_fixture(fixture)
     manifest = load_manifest(manifest_path)
@@ -187,6 +188,8 @@ def native_result(
             n_cells=None,
             dispersion_regularization=dispersion_regularization,
             regularization_support=regularization_support,
+            theta_postprocess=theta_postprocess,
+            theta_moment_ratio_threshold=THETA_MOMENT_RATIO_THRESHOLD,
         ),
         selection=manifest,
     )
@@ -196,12 +199,15 @@ def native_result(
     fit_counts = counts[:, selected_cells]
     fit_mean = np.mean(fit_counts, axis=1, dtype=np.float64)
     fit_variance = np.var(fit_counts, axis=1, ddof=1, dtype=np.float64)
-    moment_ratio = theta_moment_ratio_mask(
-        fit_mean[fit_indices],
-        fit_variance[fit_indices],
-        result.raw_theta[fit_indices],
-        threshold=THETA_MOMENT_RATIO_THRESHOLD,
-    )
+    if theta_postprocess == "moment_ratio":
+        moment_ratio = result.theta_postprocessed[fit_indices]
+    else:
+        moment_ratio = theta_moment_ratio_mask(
+            fit_mean[fit_indices],
+            fit_variance[fit_indices],
+            result.raw_theta[fit_indices],
+            threshold=THETA_MOMENT_RATIO_THRESHOLD,
+        )
     raw_infinite = fit_indices[np.isinf(result.raw_theta[fit_indices])]
     return (
         {
@@ -258,6 +264,11 @@ def main() -> None:
         choices=("extrapolate", "clamp"),
         default="extrapolate",
     )
+    parser.add_argument(
+        "--theta-postprocess",
+        choices=("none", "moment_ratio"),
+        default="none",
+    )
     parser.add_argument("--enforce", action="store_true")
     args = parser.parse_args()
 
@@ -268,12 +279,14 @@ def main() -> None:
         args.manifest,
         dispersion_regularization=args.dispersion_regularization,
         regularization_support=args.regularization_support,
+        theta_postprocess=args.theta_postprocess,
     )
     report = {
         "schema_version": 1,
         "generated_on": "2026-11-02",
         "dispersion_regularization": args.dispersion_regularization,
         "regularization_support": args.regularization_support,
+        "theta_postprocess": args.theta_postprocess,
         "theta_moment_ratio_threshold": THETA_MOMENT_RATIO_THRESHOLD,
         "thresholds_preregistered": THRESHOLDS,
         "level_b_vs_level_a": compare_pair(level_b, level_a),

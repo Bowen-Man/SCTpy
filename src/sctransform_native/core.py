@@ -6,7 +6,12 @@ from time import perf_counter
 
 import numpy as np
 
-from ._fit import fit_nb_offset, poisson_offset_intercept
+from ._fit import (
+    ThetaPostprocess,
+    fit_nb_offset,
+    poisson_offset_intercept,
+    theta_moment_ratio_mask,
+)
 from ._matrix import (
     CountMatrix,
     MatrixOrientation,
@@ -39,6 +44,8 @@ class SCTConfig:
     outlier_mad_threshold: float = 10.0
     dispersion_regularization: DispersionRegularization = "native"
     regularization_support: RegularizationSupport = "extrapolate"
+    theta_postprocess: ThetaPostprocess = "none"
+    theta_moment_ratio_threshold: float = 1.0e-3
     theta_min: float = 1e-4
     theta_max: float = 1e8
     optimizer_maxiter: int = 200
@@ -61,6 +68,13 @@ class SCTConfig:
             raise ValueError("dispersion_regularization must be 'native' or 'sct_v2'")
         if self.regularization_support not in {"extrapolate", "clamp"}:
             raise ValueError("regularization_support must be 'extrapolate' or 'clamp'")
+        if self.theta_postprocess not in {"none", "moment_ratio"}:
+            raise ValueError("theta_postprocess must be 'none' or 'moment_ratio'")
+        if (
+            not np.isfinite(self.theta_moment_ratio_threshold)
+            or self.theta_moment_ratio_threshold <= 0.0
+        ):
+            raise ValueError("theta_moment_ratio_threshold must be finite and positive")
         if not 0 < self.theta_min < self.theta_max:
             raise ValueError("theta bounds must satisfy 0 < theta_min < theta_max")
         if self.optimizer_maxiter < 1 or self.residual_block_size < 1:
@@ -91,6 +105,7 @@ class SCTResult:
     eligible_gene: np.ndarray
     selected_gene: np.ndarray
     converged: np.ndarray
+    theta_postprocessed: np.ndarray
     parameter_outlier: np.ndarray
     fit_objective: np.ndarray
     fit_iterations: np.ndarray
@@ -277,8 +292,25 @@ def fit_transform(
         status[gene_index] = "fit" if gene_fit.converged else "fit_failed"
     timing["fit"] = perf_counter() - stage_start
 
+    stage_start = perf_counter()
+    theta_postprocessed = np.zeros(genes, dtype=bool)
+    if resolved_config.theta_postprocess == "moment_ratio":
+        candidates = np.flatnonzero(
+            eligible & selected_gene_mask & ~poisson_gene & converged
+        )
+        theta_postprocessed[candidates] = theta_moment_ratio_mask(
+            fit_mean[candidates],
+            fit_variance[candidates],
+            raw_theta[candidates],
+            threshold=resolved_config.theta_moment_ratio_threshold,
+        )
+        raw_theta[theta_postprocessed] = np.inf
+        for gene_index in np.flatnonzero(theta_postprocessed):
+            status[gene_index] = "theta_postprocessed"
+    timing["theta_postprocess"] = perf_counter() - stage_start
+
     non_poisson = eligible & ~poisson_gene
-    training_mask = non_poisson & selected_gene_mask & converged
+    training_mask = non_poisson & selected_gene_mask & converged & ~theta_postprocessed
     regularized_intercept = np.full(genes, np.nan, dtype=np.float64)
     regularized_theta = np.full(genes, np.nan, dtype=np.float64)
     parameter_outlier = np.zeros(genes, dtype=bool)
@@ -288,7 +320,7 @@ def fit_transform(
         (
             predicted_intercept,
             predicted_theta,
-            parameter_outlier,
+            smoother_outlier,
             bandwidth,
         ) = regularize_parameters(
             gene_mean=fit_mean,
@@ -304,6 +336,7 @@ def fit_transform(
             dispersion_regularization=resolved_config.dispersion_regularization,
             regularization_support=resolved_config.regularization_support,
         )
+        parameter_outlier |= smoother_outlier | theta_postprocessed
         regularized_intercept[non_poisson] = predicted_intercept[non_poisson]
         regularized_theta[non_poisson] = predicted_theta[non_poisson]
         for gene_index in np.flatnonzero(non_poisson & ~selected_gene_mask):
@@ -363,6 +396,7 @@ def fit_transform(
         eligible_gene=eligible,
         selected_gene=selected_gene_mask,
         converged=converged,
+        theta_postprocessed=theta_postprocessed,
         parameter_outlier=parameter_outlier,
         fit_objective=fit_objective,
         fit_iterations=fit_iterations,

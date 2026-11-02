@@ -84,36 +84,6 @@ def named_set_metrics(
     }
 
 
-def theta_moment_ratio_mask(
-    gene_mean: np.ndarray,
-    gene_variance: np.ndarray,
-    theta: np.ndarray,
-    *,
-    threshold: float,
-) -> np.ndarray:
-    """Flag theta estimates far above their method-of-moments counterpart."""
-    gene_mean = np.asarray(gene_mean, dtype=np.float64)
-    gene_variance = np.asarray(gene_variance, dtype=np.float64)
-    theta = np.asarray(theta, dtype=np.float64)
-    if gene_mean.shape != gene_variance.shape or gene_mean.shape != theta.shape:
-        raise ValueError("mean, variance, and theta must have identical shapes")
-    if not np.isfinite(threshold) or threshold <= 0.0:
-        raise ValueError("threshold must be finite and positive")
-
-    excess_variance = gene_variance - gene_mean
-    theta_moment = np.full(gene_mean.shape, np.inf, dtype=np.float64)
-    np.divide(
-        gene_mean**2,
-        excess_variance,
-        out=theta_moment,
-        where=excess_variance > 0.0,
-    )
-    ratio = np.full(gene_mean.shape, np.inf, dtype=np.float64)
-    valid_theta = np.isfinite(theta) & (theta > 0.0)
-    np.divide(theta_moment, theta, out=ratio, where=valid_theta)
-    return ratio < threshold
-
-
 def gate_metrics(metrics: dict[str, Any], thresholds: dict[str, float]) -> bool:
     for name, threshold in thresholds.items():
         raw_value = metrics[name]
