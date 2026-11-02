@@ -3,6 +3,7 @@ import pytest
 
 from sctransform_native._regularize import (
     _dispersion_target,
+    _regularization_prediction_points,
     _theta_from_dispersion,
     sheather_jones_bandwidth,
 )
@@ -35,3 +36,16 @@ def test_dispersion_transform_round_trips_theta(mode: str) -> None:
     )
 
     np.testing.assert_allclose(reconstructed, theta, rtol=2.0e-15)
+
+
+def test_regularization_support_policy_is_explicit() -> None:
+    x_train = np.array([-1.0, 0.0, 2.0])
+    x_predict = np.array([-3.0, 0.5, 4.0])
+
+    extrapolated = _regularization_prediction_points(
+        x_train, x_predict, support="extrapolate"
+    )
+    clamped = _regularization_prediction_points(x_train, x_predict, support="clamp")
+
+    np.testing.assert_array_equal(extrapolated, x_predict)
+    np.testing.assert_array_equal(clamped, np.array([-1.0, 0.5, 2.0]))

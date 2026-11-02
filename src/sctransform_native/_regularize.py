@@ -12,6 +12,7 @@ _NORMAL_KERNEL_ROUGHNESS = 1.0 / (2.0 * np.sqrt(np.pi))
 _LOG_10 = np.log(10.0)
 
 DispersionRegularization = Literal["native", "sct_v2"]
+RegularizationSupport = Literal["extrapolate", "clamp"]
 
 
 def _normal_derivative_functional(
@@ -198,6 +199,19 @@ def _theta_from_dispersion(
     raise ValueError(f"unknown dispersion regularization mode: {mode}")
 
 
+def _regularization_prediction_points(
+    x_train: np.ndarray,
+    x_predict: np.ndarray,
+    *,
+    support: RegularizationSupport,
+) -> np.ndarray:
+    if support == "extrapolate":
+        return x_predict
+    if support == "clamp":
+        return np.clip(x_predict, np.min(x_train), np.max(x_train))
+    raise ValueError(f"unknown regularization support policy: {support}")
+
+
 def regularize_parameters(
     *,
     gene_mean: np.ndarray,
@@ -211,6 +225,7 @@ def regularize_parameters(
     theta_min: float,
     theta_max: float,
     dispersion_regularization: DispersionRegularization,
+    regularization_support: RegularizationSupport,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     train_indices = np.flatnonzero(training_mask)
     predict_indices = np.flatnonzero(prediction_mask)
@@ -247,6 +262,9 @@ def regularize_parameters(
 
     x_predict = np.log10(
         np.maximum(geometric_mean[predict_indices], np.finfo(float).tiny)
+    )
+    x_predict = _regularization_prediction_points(
+        x_train, x_predict, support=regularization_support
     )
     regularized_intercept = np.full(raw_intercept.shape, np.nan, dtype=np.float64)
     regularized_theta = np.full(raw_theta.shape, np.nan, dtype=np.float64)

@@ -103,6 +103,11 @@ Jones ([1991](https://doi.org/10.1111/j.2517-6161.1991.tb01857.x)), not from GPL
 the NB2 variance factor; **project decision** for the transform switch, stable arithmetic,
 numerical blocking, and root solver.
 
+Prediction support is explicit: `extrapolate` passes every log-geometric-mean coordinate
+to the smoother, while `clamp` restricts prediction coordinates to the minimum and
+maximum retained training coordinate. The alpha default remains `extrapolate`.
+**project decision**
+
 Poisson-like genes retain `theta=infinity` and the analytic intercept. Failed NB fits are
 never silently regularized; they are flagged and excluded from the smoothing training set.
 **project decision**
