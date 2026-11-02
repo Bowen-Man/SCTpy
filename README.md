@@ -26,6 +26,8 @@ See:
 - [implementation survey](docs/IMPLEMENTATION_SURVEY.md)
 - [SCT v2 contract](docs/SCT_V2_SPEC.md)
 - [CPU alpha API](docs/CPU_API.md)
+- [correctness gate](docs/CORRECTNESS.md)
+- [benchmark and profiling report](docs/BENCHMARKS.md)
 - [licensing rationale](docs/LICENSING.md)
 - [RAPIDS integration boundary](docs/RAPIDS_INTEGRATION.md)
 

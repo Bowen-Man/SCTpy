@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from time import perf_counter
 
 import numpy as np
 
@@ -93,6 +94,7 @@ class SCTResult:
     clip_range: tuple[float, float]
     nonzero_median: float
     regularization_bandwidth: float | None
+    timing: dict[str, float]
 
     def highly_variable_genes(self, n_top_genes: int) -> tuple[str, ...]:
         if n_top_genes < 1:
@@ -168,6 +170,8 @@ def fit_transform(
     covariates: object | None = None,
 ) -> SCTResult:
     """Fit the documented SCT v2 core and return float64 Pearson residuals."""
+    total_start = perf_counter()
+    timing: dict[str, float] = {}
     if return_corrected_umi:
         raise NotImplementedError("corrected UMI counts are not implemented in 0.1.0a1")
     if batch is not None:
@@ -175,13 +179,16 @@ def fit_transform(
     if covariates is not None:
         raise NotImplementedError("additional covariates are not implemented in 0.1.0a1")
     resolved_config = config if config is not None else SCTConfig()
+    stage_start = perf_counter()
     counts_gxc, checked_genes, checked_cells = prepare_counts(
         counts,
         gene_names=gene_names,
         cell_names=cell_names,
         orientation=matrix_orientation,
     )
+    timing["input_validation"] = perf_counter() - stage_start
     genes, cells = counts_gxc.shape
+    stage_start = perf_counter()
     library_size = np.asarray(counts_gxc.sum(axis=0), dtype=np.float64).ravel()
     gene_mean, gene_variance, detection_count, geometric_mean = matrix_statistics(
         counts_gxc
@@ -189,7 +196,9 @@ def fit_transform(
     eligible = detection_count >= resolved_config.min_cells
     if not np.any(eligible):
         raise ValueError("no genes satisfy min_cells")
+    timing["input_statistics"] = perf_counter() - stage_start
 
+    stage_start = perf_counter()
     if selection is None:
         selection = create_selection_manifest(
             gene_names=checked_genes,
@@ -207,6 +216,7 @@ def fit_transform(
         eligible_genes=eligible,
         min_cells=resolved_config.min_cells,
     )
+    timing["selection"] = perf_counter() - stage_start
 
     selected_genes = np.asarray(selection.selected_gene_indices, dtype=np.int64)
     selected_cells = np.asarray(selection.selected_cell_indices, dtype=np.int64)
@@ -225,6 +235,7 @@ def fit_transform(
     fit_message = np.full(genes, "not fit", dtype=object)
     status = np.full(genes, "insufficient_cells", dtype=object)
 
+    stage_start = perf_counter()
     for gene_index in np.flatnonzero(eligible & poisson_gene):
         y = dense_gene_row(fit_counts, int(gene_index))
         raw_intercept[gene_index] = poisson_offset_intercept(y, fit_library_size)
@@ -252,6 +263,7 @@ def fit_transform(
         fit_iterations[gene_index] = gene_fit.iterations
         fit_message[gene_index] = gene_fit.message
         status[gene_index] = "fit" if gene_fit.converged else "fit_failed"
+    timing["fit"] = perf_counter() - stage_start
 
     non_poisson = eligible & ~poisson_gene
     training_mask = non_poisson & selected_gene_mask & converged
@@ -259,6 +271,7 @@ def fit_transform(
     regularized_theta = np.full(genes, np.nan, dtype=np.float64)
     parameter_outlier = np.zeros(genes, dtype=bool)
     bandwidth: float | None = None
+    stage_start = perf_counter()
     if np.any(non_poisson):
         (
             predicted_intercept,
@@ -287,6 +300,7 @@ def fit_transform(
     for gene_index in np.flatnonzero(eligible & poisson_gene):
         regularized_intercept[gene_index] = raw_intercept[gene_index]
         regularized_theta[gene_index] = np.inf
+    timing["regularization"] = perf_counter() - stage_start
 
     slope = np.full(genes, np.nan, dtype=np.float64)
     slope[eligible] = np.log(10.0)
@@ -296,6 +310,7 @@ def fit_transform(
         else (-float(np.sqrt(cells)), float(np.sqrt(cells)))
     )
     nonzero_median = global_nonzero_median(counts_gxc)
+    stage_start = perf_counter()
     (
         residuals,
         residual_mean,
@@ -312,6 +327,8 @@ def fit_transform(
         standard_deviation_floor=nonzero_median / 5.0,
         block_size=resolved_config.residual_block_size,
     )
+    timing["residuals_and_hvg"] = perf_counter() - stage_start
+    timing["total"] = perf_counter() - total_start
 
     return SCTResult(
         gene_names=checked_genes,
@@ -345,4 +362,5 @@ def fit_transform(
         clip_range=clip_range,
         nonzero_median=nonzero_median,
         regularization_bandwidth=bandwidth,
+        timing=timing,
     )
