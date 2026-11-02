@@ -63,6 +63,12 @@ failure:
 This is a fast cross-platform regression gate, not a replacement for the full external
 Level-A/Level-B differential workflow or real-data validation.
 
+The stage artifact is governed by the versioned
+[differential report contract](REPORT_SCHEMA.md). Extreme-case tests separately cover an
+all-zero gene, integer counts above 32-bit range, more than four orders of magnitude in
+library size, and dense/CSR parity on the validated `r_v2` path. These tests assert finite
+state and explicit exclusion/branch behavior; they do not invent external golden values.
+
 ## Pre-registered gate result
 
 The larger fixture exercises Top 1000/2000/3000. The table compares Level C with Level A;
