@@ -134,6 +134,31 @@ def test_r_stats_regularization_is_explicit() -> None:
     assert np.all(np.isfinite(result.regularized_theta[modeled]))
 
 
+def test_cox_reid_v2_path_is_explicit() -> None:
+    counts, genes, cells = _overdispersed_fixture()
+    result = fit_transform(
+        counts,
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig(
+            min_cells=5,
+            n_genes=None,
+            n_cells=None,
+            fit_method="cox_reid",
+            dispersion_regularization="sct_v2",
+            regularization_method="r_stats",
+            regularization_support="clamp",
+            theta_postprocess="moment_ratio",
+        ),
+    )
+
+    modeled = result.eligible_gene & ~result.poisson_gene
+    assert result.config.fit_method == "cox_reid"
+    assert np.all(result.converged[result.selected_gene & ~result.poisson_gene])
+    assert np.all(np.isfinite(result.regularized_intercept[modeled]))
+    assert np.all(np.isfinite(result.regularized_theta[modeled]))
+
+
 def test_theta_moment_postprocess_is_visible_and_excluded_from_training() -> None:
     counts, genes, cells = _overdispersed_fixture()
     result = fit_transform(

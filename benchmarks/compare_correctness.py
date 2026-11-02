@@ -172,6 +172,7 @@ def native_result(
     fixture: Path,
     manifest_path: Path,
     *,
+    fit_method: str = "nb_mle",
     dispersion_regularization: str = "native",
     regularization_method: str = "native",
     regularization_support: str = "extrapolate",
@@ -187,6 +188,7 @@ def native_result(
             min_cells=5,
             n_genes=None,
             n_cells=None,
+            fit_method=fit_method,
             dispersion_regularization=dispersion_regularization,
             regularization_method=regularization_method,
             regularization_support=regularization_support,
@@ -202,7 +204,9 @@ def native_result(
     fit_mean = np.mean(fit_counts, axis=1, dtype=np.float64)
     fit_variance = np.var(fit_counts, axis=1, ddof=1, dtype=np.float64)
     if theta_postprocess == "moment_ratio":
-        moment_ratio = result.theta_postprocessed[fit_indices]
+        moment_ratio = result.theta_postprocessed[fit_indices] | np.isinf(
+            result.raw_theta[fit_indices]
+        )
     else:
         moment_ratio = theta_moment_ratio_mask(
             fit_mean[fit_indices],
@@ -257,6 +261,11 @@ def main() -> None:
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
+        "--fit-method",
+        choices=("nb_mle", "cox_reid"),
+        default="nb_mle",
+    )
+    parser.add_argument(
         "--dispersion-regularization",
         choices=("native", "sct_v2"),
         default="native",
@@ -284,6 +293,7 @@ def main() -> None:
     level_c, native_timing = native_result(
         args.fixture,
         args.manifest,
+        fit_method=args.fit_method,
         dispersion_regularization=args.dispersion_regularization,
         regularization_method=args.regularization_method,
         regularization_support=args.regularization_support,
@@ -292,6 +302,7 @@ def main() -> None:
     report = {
         "schema_version": 1,
         "generated_on": "2026-11-02",
+        "fit_method": args.fit_method,
         "dispersion_regularization": args.dispersion_regularization,
         "regularization_method": args.regularization_method,
         "regularization_support": args.regularization_support,

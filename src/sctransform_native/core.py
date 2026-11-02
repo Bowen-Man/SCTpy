@@ -7,8 +7,12 @@ from time import perf_counter
 import numpy as np
 
 from ._fit import (
+    FitMethod,
     ThetaPostprocess,
+    fit_cox_reid_offset,
     fit_nb_offset,
+    local_median_dispersion_trend,
+    offset_intercept,
     poisson_offset_intercept,
     theta_moment_ratio_mask,
 )
@@ -41,6 +45,7 @@ class SCTConfig:
     n_cells: int | None = 2000
     seed: int = 1448145
     clip_range: tuple[float, float] | None = None
+    fit_method: FitMethod = "nb_mle"
     bandwidth_adjust: float = 3.0
     outlier_mad_threshold: float = 10.0
     dispersion_regularization: DispersionRegularization = "native"
@@ -62,6 +67,8 @@ class SCTConfig:
             raise ValueError("n_genes must be positive or None")
         if self.n_cells is not None and self.n_cells < 2:
             raise ValueError("n_cells must be at least 2 or None")
+        if self.fit_method not in {"nb_mle", "cox_reid"}:
+            raise ValueError("fit_method must be 'nb_mle' or 'cox_reid'")
         if self.bandwidth_adjust <= 0:
             raise ValueError("bandwidth_adjust must be positive")
         if self.outlier_mad_threshold <= 0:
@@ -278,15 +285,18 @@ def fit_transform(
         if poisson_gene[gene_index]:
             continue
         y = dense_gene_row(fit_counts, int(gene_index))
-        gene_fit = fit_nb_offset(
-            y,
-            fit_library_size,
-            theta_min=resolved_config.theta_min,
-            theta_max=resolved_config.theta_max,
-            maxiter=resolved_config.optimizer_maxiter,
-            ftol=resolved_config.optimizer_ftol,
-            gtol=resolved_config.optimizer_gtol,
-        )
+        if resolved_config.fit_method == "cox_reid":
+            gene_fit = fit_cox_reid_offset(y, fit_library_size)
+        else:
+            gene_fit = fit_nb_offset(
+                y,
+                fit_library_size,
+                theta_min=resolved_config.theta_min,
+                theta_max=resolved_config.theta_max,
+                maxiter=resolved_config.optimizer_maxiter,
+                ftol=resolved_config.optimizer_ftol,
+                gtol=resolved_config.optimizer_gtol,
+            )
         raw_intercept[gene_index] = gene_fit.intercept
         raw_theta[gene_index] = gene_fit.theta
         converged[gene_index] = gene_fit.converged
@@ -294,13 +304,32 @@ def fit_transform(
         fit_iterations[gene_index] = gene_fit.iterations
         fit_message[gene_index] = gene_fit.message
         status[gene_index] = "fit" if gene_fit.converged else "fit_failed"
+
+    if resolved_config.fit_method == "cox_reid":
+        fitted = np.flatnonzero(selected_gene_mask & ~poisson_gene & converged)
+        raw_dispersion = np.zeros(fitted.size, dtype=np.float64)
+        finite_theta = np.isfinite(raw_theta[fitted])
+        raw_dispersion[finite_theta] = 1.0 / raw_theta[fitted[finite_theta]]
+        preliminary_abundance = np.exp(raw_intercept[fitted]) * float(
+            np.mean(fit_library_size)
+        )
+        dispersion_trend = local_median_dispersion_trend(
+            preliminary_abundance, raw_dispersion
+        )
+        for gene_index, dispersion in zip(fitted, dispersion_trend, strict=True):
+            y = dense_gene_row(fit_counts, int(gene_index))
+            raw_intercept[gene_index], iterations = offset_intercept(
+                y, fit_library_size, float(dispersion)
+            )
+            fit_iterations[gene_index] += iterations
+            fit_message[gene_index] = "Cox-Reid dispersion with local-median refit"
     timing["fit"] = perf_counter() - stage_start
 
     stage_start = perf_counter()
     theta_postprocessed = np.zeros(genes, dtype=bool)
     if resolved_config.theta_postprocess == "moment_ratio":
         candidates = np.flatnonzero(
-            eligible & selected_gene_mask & ~poisson_gene & converged
+            eligible & selected_gene_mask & ~poisson_gene & ~np.isnan(raw_theta)
         )
         theta_postprocessed[candidates] = theta_moment_ratio_mask(
             fit_mean[candidates],
@@ -314,7 +343,14 @@ def fit_transform(
     timing["theta_postprocess"] = perf_counter() - stage_start
 
     non_poisson = eligible & ~poisson_gene
-    training_mask = non_poisson & selected_gene_mask & converged & ~theta_postprocessed
+    nonfinite_theta = non_poisson & selected_gene_mask & ~np.isfinite(raw_theta)
+    training_mask = (
+        non_poisson
+        & selected_gene_mask
+        & converged
+        & np.isfinite(raw_theta)
+        & ~theta_postprocessed
+    )
     regularized_intercept = np.full(genes, np.nan, dtype=np.float64)
     regularized_theta = np.full(genes, np.nan, dtype=np.float64)
     parameter_outlier = np.zeros(genes, dtype=bool)
@@ -332,6 +368,7 @@ def fit_transform(
             raw_intercept=raw_intercept,
             raw_theta=raw_theta,
             training_mask=training_mask,
+            outlier_evaluation_mask=(non_poisson & selected_gene_mask & converged),
             prediction_mask=non_poisson,
             bandwidth_adjust=resolved_config.bandwidth_adjust,
             outlier_mad_threshold=resolved_config.outlier_mad_threshold,
@@ -341,7 +378,7 @@ def fit_transform(
             regularization_method=resolved_config.regularization_method,
             regularization_support=resolved_config.regularization_support,
         )
-        parameter_outlier |= smoother_outlier | theta_postprocessed
+        parameter_outlier |= smoother_outlier | theta_postprocessed | nonfinite_theta
         regularized_intercept[non_poisson] = predicted_intercept[non_poisson]
         regularized_theta[non_poisson] = predicted_theta[non_poisson]
         for gene_index in np.flatnonzero(non_poisson & ~selected_gene_mask):

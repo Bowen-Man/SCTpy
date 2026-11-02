@@ -65,6 +65,11 @@ def test_unknown_dispersion_regularization_is_rejected() -> None:
         SCTConfig(dispersion_regularization="unknown")  # type: ignore[arg-type]
 
 
+def test_unknown_fit_method_is_rejected() -> None:
+    with pytest.raises(ValueError, match="fit_method"):
+        SCTConfig(fit_method="unknown")  # type: ignore[arg-type]
+
+
 def test_unknown_regularization_support_is_rejected() -> None:
     with pytest.raises(ValueError, match="regularization_support"):
         SCTConfig(regularization_support="unknown")  # type: ignore[arg-type]

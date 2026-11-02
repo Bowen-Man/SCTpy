@@ -23,8 +23,9 @@ legal advice.
 
 ## GPL isolation
 
-`satijalab/sctransform`, the fixed `Bowen-Man/sctransform-cpu` v0.4.0 oracle, current
-`Zikun-Yang/SCTransform`, and the `saketkc/pySCTransform` license file are GPL-covered.
+`satijalab/sctransform`, `glmGamPoi` 1.22.0, the fixed
+`Bowen-Man/sctransform-cpu` v0.4.0 oracle, current `Zikun-Yang/SCTransform`, and the
+`saketkc/pySCTransform` license file are GPL-covered.
 They are not dependencies, build inputs, or vendored artifacts. Public R source may be
 consulted to identify algorithmic behavior, but the Python design, naming, vectorization,
 tests, and documentation are independently written. No reference R runtime, Fortran
