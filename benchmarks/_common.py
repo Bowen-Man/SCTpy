@@ -22,7 +22,9 @@ def load_fixture(
 
 
 def load_manifest(path: str | Path) -> SelectionManifest:
-    return SelectionManifest.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+    return SelectionManifest.from_dict(
+        json.loads(Path(path).read_text(encoding="utf-8"))
+    )
 
 
 def count_sha256(counts: np.ndarray) -> str:

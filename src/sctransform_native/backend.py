@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol, runtime_checkable
-
+from typing import Literal, Protocol
 
 DeviceKind = Literal["cpu", "cuda"]
 
@@ -27,12 +26,6 @@ class TransferRecord:
     elapsed_seconds: float
 
 
-@dataclass(frozen=True)
-class TransferResult:
-    array: object
-    record: TransferRecord
-
-
 class ImplicitDeviceTransferError(TypeError):
     """Raised when an adapter would otherwise hide a device transfer."""
 
@@ -47,7 +40,6 @@ def infer_device(array: object) -> Device:
     return Device("cpu")
 
 
-@runtime_checkable
 class ArrayBackend(Protocol):
     """Minimal boundary for a future same-device numerical implementation."""
 
@@ -59,6 +51,8 @@ class ArrayBackend(Protocol):
         self, array: object, *, dtype: object | None = None, copy: bool = False
     ) -> object: ...
 
-    def to_device(self, array: object, destination: Device) -> TransferResult: ...
+    def to_device(
+        self, array: object, destination: Device
+    ) -> tuple[object, TransferRecord]: ...
 
     def synchronize(self) -> None: ...

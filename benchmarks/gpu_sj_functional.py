@@ -3,20 +3,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import statistics
 import time
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from sctransform_native._regularize import _normal_derivative_functional
 
-try:
-    from ._common import load_fixture, write_json
-except ImportError:  # pragma: no cover - direct script execution
-    from _common import load_fixture, write_json
-
+from ._common import load_fixture, write_json
 
 THREAD_VARIABLES = (
     "OMP_NUM_THREADS",
@@ -101,9 +97,7 @@ def main() -> None:
         h2d_seconds = time.perf_counter() - transfer_start
 
         for _ in range(args.warmups):
-            _cupy_functional(
-                cp, x_gpu, bandwidth=bandwidth, block_size=args.block_size
-            )
+            _cupy_functional(cp, x_gpu, bandwidth=bandwidth, block_size=args.block_size)
             cp.cuda.get_current_stream().synchronize()
 
         gpu_kernel_seconds: list[float] = []

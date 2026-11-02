@@ -1,8 +1,12 @@
+from collections.abc import Callable
+
 import numpy as np
+import pytest
 from numpy.testing import assert_allclose, assert_array_equal
 from scipy import sparse
 
 from sctransform_native import SCTConfig, fit_transform
+from sctransform_native._matrix import MatrixOrientation
 
 
 def _overdispersed_fixture() -> tuple[np.ndarray, tuple[str, ...], tuple[str, ...]]:
@@ -78,33 +82,38 @@ def test_cpu_core_produces_complete_float64_result() -> None:
     )
 
 
-def test_sparse_dense_and_explicit_orientation_are_equivalent() -> None:
+@pytest.mark.parametrize(
+    "sparse_type",
+    [
+        sparse.csr_matrix,
+        sparse.csc_matrix,
+        sparse.coo_matrix,
+        sparse.csr_array,
+        sparse.csc_array,
+        sparse.coo_array,
+    ],
+)
+@pytest.mark.parametrize("orientation", ["genes_by_cells", "cells_by_genes"])
+def test_sparse_formats_and_orientations_match_dense(
+    sparse_type: Callable[[np.ndarray], object], orientation: MatrixOrientation
+) -> None:
     counts, genes, cells = _overdispersed_fixture()
     config = SCTConfig(min_cells=5, n_genes=None, n_cells=None, seed=13)
-    dense = fit_transform(
-        counts, gene_names=genes, cell_names=cells, config=config
-    )
-    sparse_result = fit_transform(
-        sparse.csc_matrix(counts),
+    dense = fit_transform(counts, gene_names=genes, cell_names=cells, config=config)
+    sparse_counts = counts if orientation == "genes_by_cells" else counts.T
+    result = fit_transform(
+        sparse_type(sparse_counts),
         gene_names=genes,
         cell_names=cells,
-        config=config,
-        selection=dense.selection,
-    )
-    cells_by_genes = fit_transform(
-        counts.T,
-        gene_names=genes,
-        cell_names=cells,
-        matrix_orientation="cells_by_genes",
+        matrix_orientation=orientation,
         config=config,
         selection=dense.selection,
     )
 
-    for other in (sparse_result, cells_by_genes):
-        assert_allclose(other.raw_intercept, dense.raw_intercept, equal_nan=True)
-        assert_allclose(other.raw_theta, dense.raw_theta, equal_nan=True)
-        assert_allclose(other.residuals, dense.residuals, equal_nan=True)
-        assert_array_equal(other.hvg_order, dense.hvg_order)
+    assert_allclose(result.raw_intercept, dense.raw_intercept, equal_nan=True)
+    assert_allclose(result.raw_theta, dense.raw_theta, equal_nan=True)
+    assert_allclose(result.residuals, dense.residuals, equal_nan=True)
+    assert_array_equal(result.hvg_order, dense.hvg_order)
 
 
 def test_genes_below_min_cells_are_visible_and_excluded() -> None:

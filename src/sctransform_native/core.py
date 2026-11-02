@@ -177,7 +177,9 @@ def fit_transform(
     if batch is not None:
         raise NotImplementedError("batch models are not implemented in 0.1.0a1")
     if covariates is not None:
-        raise NotImplementedError("additional covariates are not implemented in 0.1.0a1")
+        raise NotImplementedError(
+            "additional covariates are not implemented in 0.1.0a1"
+        )
     resolved_config = config if config is not None else SCTConfig()
     stage_start = perf_counter()
     counts_gxc, checked_genes, checked_cells = prepare_counts(

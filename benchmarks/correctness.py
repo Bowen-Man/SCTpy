@@ -6,7 +6,6 @@ from typing import Any
 import numpy as np
 from scipy.stats import rankdata
 
-
 THRESHOLDS: dict[str, dict[str, float]] = {
     "slope": {"max_absolute_error": 1e-12},
     "poisson": {"jaccard": 1.0},
@@ -48,9 +47,9 @@ def numeric_metrics(
     else:
         pearson = float(np.corrcoef(left, right)[0, 1])
         spearman = float(
-            np.corrcoef(rankdata(left, method="average"), rankdata(right, method="average"))[
-                0, 1
-            ]
+            np.corrcoef(
+                rankdata(left, method="average"), rankdata(right, method="average")
+            )[0, 1]
         )
     return {
         "n": int(left.size),

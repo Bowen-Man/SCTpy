@@ -19,9 +19,7 @@ def test_numeric_metrics_report_all_required_statistics() -> None:
 
 def test_jaccard_and_gate_direction() -> None:
     assert jaccard(("a", "b"), ("b", "c")) == 1 / 3
-    assert gate_metrics(
-        {"mae": 0.01, "pearson": 0.999}, {"mae": 0.1, "pearson": 0.99}
-    )
+    assert gate_metrics({"mae": 0.01, "pearson": 0.999}, {"mae": 0.1, "pearson": 0.99})
     assert not gate_metrics(
         {"mae": 0.2, "pearson": 0.999}, {"mae": 0.1, "pearson": 0.99}
     )

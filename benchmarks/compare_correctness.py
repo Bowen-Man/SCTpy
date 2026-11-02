@@ -10,12 +10,8 @@ from scipy import sparse
 
 from sctransform_native import SCTConfig, fit_transform
 
-try:
-    from ._common import load_fixture, load_manifest, write_json
-    from .correctness import THRESHOLDS, gate_metrics, jaccard, numeric_metrics
-except ImportError:  # pragma: no cover - direct script execution
-    from _common import load_fixture, load_manifest, write_json
-    from correctness import THRESHOLDS, gate_metrics, jaccard, numeric_metrics
+from ._common import load_fixture, load_manifest, write_json
+from .correctness import THRESHOLDS, gate_metrics, jaccard, numeric_metrics
 
 
 def _read_lines(path: Path) -> tuple[str, ...]:
@@ -37,21 +33,15 @@ def load_r_oracle(path: Path) -> dict[str, Any]:
         "regularized_intercept": np.fromfile(
             path / "regularized_intercept.f64", dtype="<f8"
         ),
-        "regularized_slope": np.fromfile(
-            path / "regularized_slope.f64", dtype="<f8"
-        ),
-        "regularized_theta": np.fromfile(
-            path / "regularized_theta.f64", dtype="<f8"
-        ),
+        "regularized_slope": np.fromfile(path / "regularized_slope.f64", dtype="<f8"),
+        "regularized_theta": np.fromfile(path / "regularized_theta.f64", dtype="<f8"),
         "raw_intercept": np.fromfile(path / "raw_intercept.f64", dtype="<f8"),
         "raw_theta": np.fromfile(path / "raw_theta.f64", dtype="<f8"),
         "residuals": np.fromfile(path / "residuals.f64", dtype="<f8").reshape(
             gene_count, cell_count
         ),
         "residual_mean": np.fromfile(path / "residual_mean.f64", dtype="<f8"),
-        "residual_variance": np.fromfile(
-            path / "residual_variance.f64", dtype="<f8"
-        ),
+        "residual_variance": np.fromfile(path / "residual_variance.f64", dtype="<f8"),
         "hvg_genes": _read_lines(path / "hvg_genes.txt"),
         "poisson_genes": _read_lines(path / "poisson_genes.txt"),
     }
@@ -123,9 +113,7 @@ def compare_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
         left, right, field="residuals", names_field="genes"
     )
     residual_metrics = numeric_metrics(left_residuals, right_residuals)
-    residual_metrics["gate"] = gate_metrics(
-        residual_metrics, THRESHOLDS["residual"]
-    )
+    residual_metrics["gate"] = gate_metrics(residual_metrics, THRESHOLDS["residual"])
     report["residuals"] = residual_metrics
     poisson_metrics = {
         "jaccard": jaccard(left["poisson_genes"], right["poisson_genes"])

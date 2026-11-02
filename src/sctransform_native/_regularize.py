@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 from scipy.optimize import brentq
 
-
 # R's public ksmooth contract places Gaussian quartiles at +/- 0.25 * bandwidth.
 # A standard normal has quartiles +/- 0.67448975..., hence sigma = bandwidth / this.
 _NORMAL_BANDWIDTH_TO_SIGMA = 4.0 * 0.6744897501960817
@@ -131,9 +130,7 @@ def robust_bandwidth(x: np.ndarray, *, adjust: float) -> float:
     if not np.isfinite(scale) or scale <= 0.0:
         scale = max(float(np.max(np.abs(x))), 1.0) * np.finfo(np.float64).eps
     bandwidth = 0.9 * scale * x.size ** (-0.2) * adjust
-    floor = max(float(np.max(np.abs(x))), 1.0) * np.sqrt(
-        np.finfo(np.float64).eps
-    )
+    floor = max(float(np.max(np.abs(x))), 1.0) * np.sqrt(np.finfo(np.float64).eps)
     return max(float(bandwidth), floor)
 
 

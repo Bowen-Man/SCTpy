@@ -9,10 +9,7 @@ from pathlib import Path
 import numpy as np
 from scipy import sparse
 
-try:
-    from ._common import count_sha256, load_fixture, load_manifest
-except ImportError:  # pragma: no cover - direct script execution
-    from _common import count_sha256, load_fixture, load_manifest
+from ._common import count_sha256, load_fixture, load_manifest
 
 
 def main() -> None:
@@ -29,8 +26,10 @@ def main() -> None:
         raise RuntimeError(f"expected sctransform-cpu 0.4.0, found {version}")
     from sctransform_cpu import (
         SCTConfig,
-        SelectionManifest as ReferenceSelectionManifest,
         sctransform,
+    )
+    from sctransform_cpu import (
+        SelectionManifest as ReferenceSelectionManifest,
     )
 
     counts, genes, cells = load_fixture(args.fixture)

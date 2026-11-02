@@ -16,7 +16,10 @@ result = fit_transform(
 
 `matrix_orientation="cells_by_genes"` is also accepted and performs one explicit
 transpose at validation. Internally, every matrix is genes x cells. Dense NumPy and SciPy
-CSR/CSC inputs are supported; model fitting and residual output use float64.
+sparse matrix/array inputs are supported. Sparse formats (including CSR, CSC, and COO) are
+validated and normalized once to sorted CSR; they stay sparse through statistics and
+selection. Only the current gene row/block and the documented dense residual output are
+materialized. Model fitting and residual output use float64.
 
 The optional AnnData adapter reads `adata.X` or one explicitly named layer without
 mutating the object:

@@ -39,7 +39,7 @@ class SelectionManifest:
         }
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "SelectionManifest":
+    def from_dict(cls, value: Mapping[str, Any]) -> SelectionManifest:
         return cls(
             schema_version=int(value["schema_version"]),
             seed=int(value["seed"]),
@@ -48,11 +48,15 @@ class SelectionManifest:
             selected_gene_indices=tuple(
                 int(item) for item in value["selected_gene_indices"]
             ),
-            selected_gene_names=tuple(str(item) for item in value["selected_gene_names"]),
+            selected_gene_names=tuple(
+                str(item) for item in value["selected_gene_names"]
+            ),
             selected_cell_indices=tuple(
                 int(item) for item in value["selected_cell_indices"]
             ),
-            selected_cell_names=tuple(str(item) for item in value["selected_cell_names"]),
+            selected_cell_names=tuple(
+                str(item) for item in value["selected_cell_names"]
+            ),
             min_cells=int(value["min_cells"]),
             requested_genes=(
                 None

@@ -52,7 +52,9 @@ hvg_2000 = result.highly_variable_genes(2000)
 ## Development
 
 ```bash
-python -m pip install -e ".[test]"
+python -m pip install -e ".[test,lint]"
+ruff check .
+ruff format --check .
 python -m pytest
 ```
 

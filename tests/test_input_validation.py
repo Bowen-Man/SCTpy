@@ -34,6 +34,12 @@ def test_sparse_input_is_validated() -> None:
         _fit(counts)
 
 
+def test_sparse_duplicate_entries_cannot_hide_negative_counts() -> None:
+    counts = sparse.coo_matrix(([-1.0, 2.0, 1.0], ([0, 0, 1], [0, 0, 1])), shape=(2, 2))
+    with pytest.raises(ValueError, match="nonnegative"):
+        _fit(counts)
+
+
 def test_zero_library_cell_is_rejected() -> None:
     with pytest.raises(ValueError, match="positive library size"):
         _fit(np.array([[1, 0], [2, 0]]))
