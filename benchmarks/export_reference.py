@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 from scipy import sparse
 
+from sctransform_native._matrix import matrix_statistics
+
 from ._common import count_sha256, load_fixture, load_manifest
 
 
@@ -39,9 +41,8 @@ def main() -> None:
         [gene_lookup[name] for name in manifest.selected_gene_names], dtype=np.int64
     )
     selected_cell_indices = np.asarray(manifest.selected_cell_indices, dtype=np.int64)
-    selected_counts = counts[np.ix_(selected_gene_indices, selected_cell_indices)]
-    selected_mean = np.mean(selected_counts, axis=1, dtype=np.float64)
-    selected_variance = np.var(selected_counts, axis=1, ddof=1, dtype=np.float64)
+    selected_counts = counts[selected_gene_indices][:, selected_cell_indices]
+    selected_mean, selected_variance, _, _ = matrix_statistics(selected_counts)
     poisson = (selected_mean < 0.001) | (selected_variance <= selected_mean)
     reference_fit_genes = tuple(
         name

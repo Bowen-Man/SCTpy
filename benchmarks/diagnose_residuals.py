@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 
+from sctransform_native._matrix import CountMatrix, global_nonzero_median
 from sctransform_native.core import _residuals_and_summary
 
 from ._common import load_fixture, write_json
@@ -29,7 +30,7 @@ def _metric_gate(metrics: dict[str, float | int | None]) -> bool:
 
 
 def residual_reinjection_report(
-    counts: np.ndarray,
+    counts: CountMatrix,
     gene_names: tuple[str, ...],
     cell_names: tuple[str, ...],
     oracle: dict[str, Any],
@@ -65,11 +66,10 @@ def residual_reinjection_report(
     intercept[oracle_indices] = oracle["regularized_intercept"]
     theta[oracle_indices] = oracle["regularized_theta"]
 
-    library_size = counts.sum(axis=0, dtype=np.float64)
-    nonzero = counts[counts > 0]
-    if nonzero.size == 0:
+    library_size = np.asarray(counts.sum(axis=0), dtype=np.float64).ravel()
+    nonzero_median = global_nonzero_median(counts)
+    if nonzero_median == 0.0:
         raise ValueError("fixture must contain at least one nonzero count")
-    nonzero_median = float(np.median(nonzero))
     clip_limit = float(np.sqrt(cells))
     residuals, residual_mean, residual_variance, hvg_order, _ = _residuals_and_summary(
         sparse.csr_matrix(counts),

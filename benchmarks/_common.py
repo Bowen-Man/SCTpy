@@ -13,9 +13,27 @@ from sctransform_native import SelectionManifest
 
 def load_fixture(
     path: str | Path,
-) -> tuple[np.ndarray, tuple[str, ...], tuple[str, ...]]:
+) -> tuple[np.ndarray | sparse.csr_matrix, tuple[str, ...], tuple[str, ...]]:
     with np.load(path, allow_pickle=False) as fixture:
-        counts = np.asarray(fixture["counts"], dtype=np.int64)
+        if "counts" in fixture.files:
+            counts: np.ndarray | sparse.csr_matrix = np.asarray(
+                fixture["counts"], dtype=np.int64
+            )
+        elif str(fixture["format"]) == "csr":
+            shape = tuple(int(value) for value in fixture["counts_shape"])
+            counts = sparse.csr_matrix(
+                (
+                    np.asarray(fixture["counts_data"], dtype=np.int64),
+                    np.asarray(fixture["counts_indices"]),
+                    np.asarray(fixture["counts_indptr"]),
+                ),
+                shape=shape,
+            )
+            counts.sum_duplicates()
+            counts.eliminate_zeros()
+            counts.sort_indices()
+        else:
+            raise ValueError("fixture must contain dense counts or a CSR matrix")
         genes = tuple(str(value) for value in fixture["gene_names"])
         cells = tuple(str(value) for value in fixture["cell_names"])
     return counts, genes, cells
@@ -27,8 +45,44 @@ def load_manifest(path: str | Path) -> SelectionManifest:
     )
 
 
-def count_sha256(counts: np.ndarray) -> str:
-    return hashlib.sha256(np.ascontiguousarray(counts).view(np.uint8)).hexdigest()
+def count_sha256(counts: np.ndarray | sparse.spmatrix) -> str:
+    if not sparse.issparse(counts):
+        return hashlib.sha256(np.ascontiguousarray(counts).view(np.uint8)).hexdigest()
+
+    matrix = sparse.csr_matrix(counts, dtype=np.int64, copy=True)
+    matrix.sum_duplicates()
+    matrix.eliminate_zeros()
+    matrix.sort_indices()
+    digest = hashlib.sha256(b"canonical-csr-int64-v1\0")
+    digest.update(np.asarray(matrix.shape, dtype="<i8").tobytes())
+    digest.update(np.asarray(matrix.indptr, dtype="<i8").tobytes())
+    digest.update(np.asarray(matrix.indices, dtype="<i8").tobytes())
+    digest.update(np.asarray(matrix.data, dtype="<i8").tobytes())
+    return digest.hexdigest()
+
+
+def save_sparse_fixture(
+    path: str | Path,
+    counts: sparse.spmatrix,
+    gene_names: tuple[str, ...],
+    cell_names: tuple[str, ...],
+) -> None:
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    matrix = sparse.csr_matrix(counts, dtype=np.int64, copy=True)
+    matrix.sum_duplicates()
+    matrix.eliminate_zeros()
+    matrix.sort_indices()
+    np.savez_compressed(
+        destination,
+        format=np.asarray("csr"),
+        counts_data=matrix.data,
+        counts_indices=matrix.indices,
+        counts_indptr=matrix.indptr,
+        counts_shape=np.asarray(matrix.shape, dtype=np.int64),
+        gene_names=np.asarray(gene_names),
+        cell_names=np.asarray(cell_names),
+    )
 
 
 def matrix_summary(matrix: np.ndarray | sparse.spmatrix) -> dict[str, Any]:

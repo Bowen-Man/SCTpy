@@ -26,6 +26,13 @@ the HDF5 matrix is 36,601 features by 11,996 barcodes with 27,164,608 nonzero en
 all features are `Gene Expression` on `GRCh38`. Ensembl feature IDs and barcodes are
 unique, while ten gene-symbol collisions make symbols unsuitable as canonical names.
 
+The deterministic 3,000-cell derivation has 6,788,544 nonzero entries and occupies about
+51.9 MiB as canonical CSR before compression (12.7 MB in the generated fixture archive).
+It retains 17,155 genes at `min_cells=5`, of which 14,004 satisfy the step-1
+overdispersion rule. Its canonical sparse-count SHA-256 is
+`d9c23eda8654b17fab1a3672df4961b53f2d9e63356dd631de567c76db570532`.
+**measured on 2026-11-03**
+
 ## Deterministic validation fixture
 
 The validation fixture will be derived without biological QC or expression-dependent cell
@@ -39,8 +46,9 @@ filtering:
    the selected source indices. Preserve barcode strings exactly.
 5. Retain raw integer UMI counts. The SCT `min_cells=5` rule, not an upstream custom
    filter, determines eligible genes.
-6. Create and persist one explicit v2 selection manifest for all Level-A/B/C runs. No
-   cross-language random stream is compared.
+6. Run Level A with `set.seed(20261103)`, `n_genes=2000`, and `n_cells=2000`, then freeze
+   its exported named gene/cell selection as the manifest replayed by Levels B and C. The
+   manifest, not an assumption about a cross-language random stream, defines the comparison.
 7. Record the derived sparse matrix hash, ordered-name hashes, shapes, `nnz`, selection
    manifest hash, package versions, and every numerical threshold before inspecting the
    differential result.
@@ -60,3 +68,9 @@ the failure; it does not trigger an unreviewed increase.
 
 Real-data validation is an additional generalization check. It does not replace the
 synthetic frozen CI gate and will not be used to weaken its tolerances.
+
+`benchmarks.prepare_pbmc_fixture` verifies the source hash before reading it and stores
+the derived counts as canonical CSR arrays. The manual `Real-data validation` workflow is
+run either from the Actions UI or by applying the `real-data-validation` label to a PR.
+It installs both external oracles only inside that isolated job and uploads compact
+diagnostics, never the source HDF5, sparse fixture, full residual matrix, or native binary.

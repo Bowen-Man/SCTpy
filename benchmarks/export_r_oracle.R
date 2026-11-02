@@ -1,10 +1,22 @@
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) != 2) {
-  stop("usage: export_r_oracle.R FIXTURE_PREFIX OUTPUT_DIR")
+if (!(length(args) %in% c(2, 5))) {
+  stop("usage: export_r_oracle.R FIXTURE_PREFIX OUTPUT_DIR [N_GENES N_CELLS SEED]")
 }
 
 fixture_prefix <- args[[1]]
 output_dir <- args[[2]]
+n_genes <- NULL
+n_cells <- NULL
+selection_seed <- NA_integer_
+if (length(args) == 5) {
+  n_genes <- as.integer(args[[3]])
+  n_cells <- as.integer(args[[4]])
+  selection_seed <- as.integer(args[[5]])
+  if (anyNA(c(n_genes, n_cells, selection_seed))) {
+    stop("N_GENES, N_CELLS, and SEED must be integers")
+  }
+  set.seed(selection_seed)
+}
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 suppressPackageStartupMessages(library(Matrix))
@@ -21,8 +33,8 @@ started <- proc.time()[["elapsed"]]
 result <- vst(
   umi,
   vst.flavor = "v2",
-  n_genes = NULL,
-  n_cells = NULL,
+  n_genes = n_genes,
+  n_cells = n_cells,
   return_cell_attr = TRUE,
   verbosity = 0
 )
@@ -92,6 +104,9 @@ metadata <- c(
   paste("cells", length(cells), sep = "\t"),
   paste("fit_genes", length(raw_genes), sep = "\t"),
   paste("fit_cells", length(fit_cells), sep = "\t"),
+  paste("requested_genes", ifelse(is.null(n_genes), "all", n_genes), sep = "\t"),
+  paste("requested_cells", ifelse(is.null(n_cells), "all", n_cells), sep = "\t"),
+  paste("selection_seed", ifelse(is.na(selection_seed), "not_used", selection_seed), sep = "\t"),
   paste("parameter_outliers", sum(outlier_mask), sep = "\t"),
   paste("elapsed_seconds", format(elapsed, digits = 17), sep = "\t"),
   paste("generated_on", format(Sys.Date()), sep = "\t")
