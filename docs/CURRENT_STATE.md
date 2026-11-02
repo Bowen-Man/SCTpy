@@ -58,11 +58,13 @@ contrary evidence.
 
 ## Numerical gap classification
 
-- **Confirmed issue:** the preliminary Cox--Reid intercept is the largest remaining
-  numerical difference. The larger-fixture RMSE is `4.24e-4`, while later smoothing
-  reduces final-intercept RMSE to `4.16e-5`.
-- **Plausible hypothesis:** iteration order and stopping behavior in preliminary offset
-  fitting explain most of that gap. No iteration-level trace currently proves it.
+- **Confirmed issue:** the R oracle applies the local dispersion trend inside gene bins of
+  500. The current compatibility path applies it once across all 3,091 fit genes. A
+  controlled bin-size A/B reduces raw-intercept RMSE from `4.24e-4` to `3.88e-10` only at
+  bin size 500.
+- **Falsified on the larger fixture:** preliminary offset iteration/stopping behavior is
+  not the dominant gap. The A/B holds every preliminary and dispersion fit fixed, and the
+  opt-in trace records score evaluations and solver termination directly.
 - **Unverified concern:** synthetic Gamma--Poisson fixtures do not establish behavior on
   licensed real scRNA-seq data or very large cell counts.
 - **Resolved on fixed fixtures:** final residual arithmetic, regularization from oracle raw
@@ -86,6 +88,6 @@ The differential report now exports a versioned stage record with input/selectio
 provenance, numeric masks, appropriate relative errors, convergence summaries, top-error
 genes, and complete HVG rank agreement.
 
-1. Add preliminary offset-intercept iteration tracing as an opt-in diagnostic, then test
-   the stopping-order hypothesis without changing production numerics.
+1. Encode the confirmed 500-gene local-trend bin only in the R-v2 compatibility contract,
+   then rerun every correctness gate and the controlled performance baseline.
 2. Add licensed real-data provenance and validation before generalizing fixture results.

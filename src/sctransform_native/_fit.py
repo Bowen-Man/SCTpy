@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -9,6 +10,7 @@ from scipy.special import digamma, gammaln
 
 FitMethod = Literal["nb_mle", "cox_reid"]
 ThetaPostprocess = Literal["none", "moment_ratio"]
+FitTrace = Callable[[dict[str, float | int | str | bool]], None]
 
 _COX_REID_CORRECTION = 0.99
 _DISPERSION_FLOOR = 1.0e-8
@@ -23,6 +25,16 @@ class GeneFit:
     objective: float
     iterations: int
     message: str
+
+
+def _emit_trace(
+    trace: FitTrace | None,
+    stage: str,
+    event: str,
+    **values: float | int | str | bool,
+) -> None:
+    if trace is not None:
+        trace({"stage": stage, "event": event, **values})
 
 
 def theta_moment_ratio_mask(
@@ -144,27 +156,64 @@ def fit_nb_offset(
 
 
 def offset_intercept(
-    y: np.ndarray, exposure: np.ndarray, dispersion: float
+    y: np.ndarray,
+    exposure: np.ndarray,
+    dispersion: float,
+    *,
+    trace: FitTrace | None = None,
+    trace_stage: str = "offset_intercept",
 ) -> tuple[float, int]:
     """Fit one offset intercept for a fixed NB2 dispersion."""
     if float(np.sum(y)) == 0.0:
+        _emit_trace(trace, trace_stage, "all_zero", intercept=-np.inf)
         return -np.inf, 0
     if dispersion == 0.0:
-        return poisson_offset_intercept(y, exposure), 0
+        intercept = poisson_offset_intercept(y, exposure)
+        _emit_trace(trace, trace_stage, "poisson", intercept=intercept)
+        return intercept, 0
 
     center = poisson_offset_intercept(y, exposure)
+    lower = center - 30.0
+    upper = center + 30.0
+    _emit_trace(
+        trace,
+        trace_stage,
+        "initialization",
+        dispersion=dispersion,
+        center=center,
+        lower=lower,
+        upper=upper,
+    )
 
     def score(intercept: float) -> float:
         mu = np.exp(intercept) * exposure
-        return float(np.sum((y - mu) / (1.0 + dispersion * mu)))
+        value = float(np.sum((y - mu) / (1.0 + dispersion * mu)))
+        _emit_trace(
+            trace,
+            trace_stage,
+            "score_evaluation",
+            intercept=intercept,
+            score=value,
+        )
+        return value
 
     root, result = brentq(
         score,
-        center - 30.0,
-        center + 30.0,
+        lower,
+        upper,
         xtol=1.0e-12,
         rtol=1.0e-14,
         full_output=True,
+    )
+    _emit_trace(
+        trace,
+        trace_stage,
+        "result",
+        intercept=float(root),
+        iterations=int(result.iterations),
+        function_calls=int(result.function_calls),
+        converged=bool(result.converged),
+        flag=str(result.flag),
     )
     return float(root), int(result.iterations)
 
@@ -219,7 +268,9 @@ def _cox_reid_score(log_dispersion: float, y: np.ndarray, mu: np.ndarray) -> flo
     return float(likelihood_score - digamma_score + adjustment)
 
 
-def fit_cox_reid_offset(y: np.ndarray, exposure: np.ndarray) -> GeneFit:
+def fit_cox_reid_offset(
+    y: np.ndarray, exposure: np.ndarray, *, trace: FitTrace | None = None
+) -> GeneFit:
     """Estimate an offset NB2 model with Cox--Reid adjusted dispersion."""
     mean = float(np.mean(y))
     if mean == 0.0:
@@ -236,12 +287,43 @@ def fit_cox_reid_offset(y: np.ndarray, exposure: np.ndarray) -> GeneFit:
         (variance - mean / float(np.mean(exposure))) / mean**2,
         0.0,
     )
+    _emit_trace(
+        trace,
+        "cox_reid",
+        "initialization",
+        mean=mean,
+        variance=variance,
+        initial_dispersion=initial_dispersion,
+    )
     preliminary_intercept, beta_iterations = offset_intercept(
-        y, exposure, initial_dispersion
+        y,
+        exposure,
+        initial_dispersion,
+        trace=trace,
+        trace_stage="preliminary_offset",
     )
     mu = np.exp(preliminary_intercept) * exposure
+
+    if trace is None:
+        score_function = _cox_reid_score
+    else:
+
+        def score_function(
+            log_dispersion: float, values: np.ndarray, fitted_mean: np.ndarray
+        ) -> float:
+            value = _cox_reid_score(log_dispersion, values, fitted_mean)
+            _emit_trace(
+                trace,
+                "cox_reid_dispersion",
+                "score_evaluation",
+                log_dispersion=log_dispersion,
+                dispersion=float(np.exp(log_dispersion)),
+                score=value,
+            )
+            return value
+
     lower = float(np.log(_DISPERSION_FLOOR))
-    lower_score = _cox_reid_score(lower, y, mu)
+    lower_score = score_function(lower, y, mu)
     dispersion_iterations = 0
     if lower_score < 0.0:
         dispersion = 0.0
@@ -250,16 +332,16 @@ def fit_cox_reid_offset(y: np.ndarray, exposure: np.ndarray) -> GeneFit:
             max(initial_dispersion, _DISPERSION_FLOOR * 4.0),
             _DISPERSION_CEILING,
         )
-        upper_score = _cox_reid_score(np.log(upper_dispersion), y, mu)
+        upper_score = score_function(np.log(upper_dispersion), y, mu)
         while upper_score > 0.0 and upper_dispersion < _DISPERSION_CEILING:
             upper_dispersion = min(upper_dispersion * 4.0, _DISPERSION_CEILING)
-            upper_score = _cox_reid_score(np.log(upper_dispersion), y, mu)
+            upper_score = score_function(np.log(upper_dispersion), y, mu)
             dispersion_iterations += 1
         if upper_score > 0.0:
             dispersion = _DISPERSION_CEILING
         else:
             root, result = brentq(
-                _cox_reid_score,
+                score_function,
                 lower,
                 np.log(upper_dispersion),
                 args=(y, mu),
@@ -281,6 +363,17 @@ def fit_cox_reid_offset(y: np.ndarray, exposure: np.ndarray) -> GeneFit:
         objective = float(
             np.sum(mu - y * np.log(mu) + gammaln(y + 1.0), dtype=np.float64)
         )
+    _emit_trace(
+        trace,
+        "cox_reid",
+        "result",
+        preliminary_intercept=preliminary_intercept,
+        theta=float(theta),
+        dispersion=float(dispersion),
+        beta_iterations=beta_iterations,
+        dispersion_iterations=dispersion_iterations,
+        objective=objective,
+    )
     return GeneFit(
         intercept=preliminary_intercept,
         theta=float(theta),
