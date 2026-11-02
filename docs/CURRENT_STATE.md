@@ -96,7 +96,9 @@ repaired a stale fixture-generator call site after the sparse-aware selection AP
 explicit matrix and geometric-mean inputs. A CLI regression test now protects every
 replay artifact.
 
-The remaining pre-GPU work is to freeze the diagnostic JSON contract, cover numerical
-extremes, select a licensed real-data source with immutable provenance, validate it, and
-profile a CPU-batched Cox--Reid experiment. GPU implementation remains deferred until
-those results identify a justified device workload.
+The diagnostic JSON contract, numerical-extreme coverage, and licensed real-data source
+with immutable provenance are now fixed. A daily isolated workflow reruns the larger
+Level-A/Level-B/Level-C differential and both stage-reinjection checks without adding R or
+the GPL oracle to package dependencies. The remaining pre-GPU work is real-data
+validation and a profiled CPU-batched Cox--Reid experiment. GPU implementation remains
+deferred until those results identify a justified device workload.

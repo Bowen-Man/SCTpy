@@ -94,6 +94,6 @@ metadata <- c(
   paste("fit_cells", length(fit_cells), sep = "\t"),
   paste("parameter_outliers", sum(outlier_mask), sep = "\t"),
   paste("elapsed_seconds", format(elapsed, digits = 17), sep = "\t"),
-  paste("generated_on", "2026-11-02", sep = "\t")
+  paste("generated_on", format(Sys.Date()), sep = "\t")
 )
 writeLines(metadata, file.path(output_dir, "metadata.tsv"), useBytes = TRUE)
