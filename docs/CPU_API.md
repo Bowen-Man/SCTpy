@@ -44,8 +44,9 @@ cox_reid / gene_bin_500 / sct_v2 / r_stats / clamp / moment_ratio
 ```
 
 The preset accepts selection controls (`min_cells`, `n_genes`, `n_cells`, and `seed`) and
-the execution-only `residual_block_size`; its statistical compatibility settings are not
-override parameters. Plain `SCTConfig()` retains the existing native research path and
+the execution-only `residual_block_size` and `cox_reid_batch_size`. The validated batch
+default is 64 genes; pass `None` to replay the scalar solver. Batch size does not change
+`statistical_mode`. Plain `SCTConfig()` retains the existing native research path and
 therefore remains backward compatible. `config.statistical_mode` returns `"r_v2"`,
 `"native"`, or `"experimental"`; the last label covers mixed algorithm settings that have
 not passed the complete compatibility gate as one configuration.
@@ -80,7 +81,8 @@ an abundance-local weighted-median dispersion trend for the intercept refit. It 
 NumPy/SciPy code and does not import `glmGamPoi` or R. The independent default evaluates
 one trend across all fitted genes. `SCTConfig.r_v2()` instead fixes
 `cox_reid_gene_bin_size=500`; the bin boundary affects the local trend and is therefore a
-statistical compatibility setting, not an execution-only block size.
+statistical compatibility setting. It is distinct from `cox_reid_batch_size`, which only
+bounds the dense selected-cell working block used by the initial dispersion solve.
 
 Dispersion regularization is also explicit. The alpha default remains `native`; use
 `SCTConfig(dispersion_regularization="sct_v2")` to smooth
@@ -121,10 +123,11 @@ not labelled as newly postprocessed.
 ## Numerical implementation
 
 The default per-gene NB2 intercept and theta are fitted by independently derived maximum
-likelihood with analytic gradients and SciPy L-BFGS-B. The optional Cox--Reid path uses
-scalar root solves and a one-dimensional local-median trend. Both regularization methods
-are NumPy/SciPy code and keep pair-distance, smoothing, and outlier temporaries
-one-dimensional.
+likelihood with analytic gradients and SciPy L-BFGS-B. The optional Cox--Reid path groups
+independent score evaluations into bounded dense gene blocks and uses safeguarded per-gene
+roots; preliminary and final intercept fits remain independent scalar solves. Both
+regularization methods are NumPy/SciPy code and keep pair-distance, smoothing, and outlier
+temporaries bounded.
 The native derivative-functional sums are block bounded. The `r_stats` path uses at most
 1000 distance bins for larger training sets and truncates the normal kernel at four
 standard deviations. The package contains no R-math layer and does not claim bit identity.

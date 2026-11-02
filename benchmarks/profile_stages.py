@@ -58,6 +58,7 @@ def main() -> None:
         "--fit-method", choices=("nb_mle", "cox_reid"), default="nb_mle"
     )
     parser.add_argument("--cox-reid-gene-bin-size", type=int)
+    parser.add_argument("--cox-reid-batch-size", type=int)
     parser.add_argument(
         "--dispersion-regularization",
         choices=("native", "sct_v2"),
@@ -89,13 +90,15 @@ def main() -> None:
         n_cells=None,
         fit_method=args.fit_method,
         cox_reid_gene_bin_size=args.cox_reid_gene_bin_size,
+        cox_reid_batch_size=args.cox_reid_batch_size,
         dispersion_regularization=args.dispersion_regularization,
         regularization_method=args.regularization_method,
         regularization_support=args.regularization_support,
         theta_postprocess=args.theta_postprocess,
         residual_block_size=args.block_size,
     )
-    rss_samples = [psutil.Process().memory_info().rss]
+    baseline_rss = psutil.Process().memory_info().rss
+    rss_samples = [baseline_rss]
     stop = threading.Event()
     sampler = threading.Thread(
         target=_rss_sampler, args=(stop, rss_samples), daemon=True
@@ -131,14 +134,37 @@ def main() -> None:
             & ~result.parameter_outlier
         )
     )
-    sj_block_shape = [min(256, sj_training_count), sj_training_count]
-    sj_block_bytes = int(np.prod(sj_block_shape) * np.dtype(np.float64).itemsize)
+    if args.regularization_method == "native":
+        bandwidth_shape = [min(256, sj_training_count), sj_training_count]
+        bandwidth_dtype = np.dtype(np.float64)
+        bandwidth_arrays = 5
+        bandwidth_lifetime = "released after each derivative-functional block"
+    elif sj_training_count <= 500:
+        bandwidth_shape = [sj_training_count, sj_training_count]
+        bandwidth_dtype = np.dtype(np.int64)
+        bandwidth_arrays = 2
+        bandwidth_lifetime = "released after the binned pair-count histogram"
+    else:
+        bandwidth_shape = [1000]
+        bandwidth_dtype = np.dtype(np.float64)
+        bandwidth_arrays = 4
+        bandwidth_lifetime = "retained only during bandwidth selection"
+    bandwidth_bytes = int(np.prod(bandwidth_shape) * bandwidth_dtype.itemsize)
+    cox_reid_block_size = args.cox_reid_batch_size or 1
+    cox_reid_block_shape = [
+        min(cox_reid_block_size, len(manifest.selected_gene_indices)),
+        len(manifest.selected_cell_indices),
+    ]
+    cox_reid_block_bytes = int(
+        np.prod(cox_reid_block_shape) * np.dtype(np.float64).itemsize
+    )
     report = {
         "schema_version": 1,
         "generated_on": "2026-11-02",
         "model": {
             "fit_method": args.fit_method,
             "cox_reid_gene_bin_size": args.cox_reid_gene_bin_size,
+            "cox_reid_batch_size": args.cox_reid_batch_size,
             "dispersion_regularization": args.dispersion_regularization,
             "regularization_method": args.regularization_method,
             "regularization_support": args.regularization_support,
@@ -146,11 +172,22 @@ def main() -> None:
         },
         "wall_seconds": wall_seconds,
         "stage_seconds": result.timing,
+        "baseline_rss_bytes": baseline_rss,
         "peak_rss_bytes": max(rss_samples),
+        "peak_rss_growth_bytes": max(rss_samples) - baseline_rss,
         "python_tracemalloc_peak_bytes": traced_peak,
         "matrices": {
             "input_counts": matrix_summary(input_matrix),
             "dense_residual_output": matrix_summary(result.residuals),
+            "cox_reid_gene_block": {
+                "shape": cox_reid_block_shape,
+                "dtype": "float64",
+                "nbytes_each": cox_reid_block_bytes,
+                "estimated_simultaneous_dense_arrays": 8,
+                "estimated_peak_block_bytes": cox_reid_block_bytes * 8,
+                "lifetime": "allocated and released once per initial-fit gene block",
+                "active": args.fit_method == "cox_reid",
+            },
             "residual_gene_block": {
                 "shape": gene_block_shape,
                 "dtype": "float64",
@@ -159,20 +196,28 @@ def main() -> None:
                 "estimated_peak_block_bytes": block_bytes * 5,
                 "lifetime": "allocated and released once per residual gene block",
             },
-            "sj_pairwise_derivative_block": {
-                "shape": sj_block_shape,
-                "dtype": "float64",
-                "nbytes_each": sj_block_bytes,
-                "estimated_simultaneous_dense_arrays": 5,
-                "estimated_peak_block_bytes": sj_block_bytes * 5,
-                "lifetime": "allocated and released for each pilot/root functional evaluation",
+            "bandwidth_workspace": {
+                "shape": bandwidth_shape,
+                "dtype": str(bandwidth_dtype),
+                "nbytes_each": bandwidth_bytes,
+                "estimated_simultaneous_dense_arrays": bandwidth_arrays,
+                "estimated_peak_block_bytes": bandwidth_bytes * bandwidth_arrays,
+                "lifetime": bandwidth_lifetime,
             },
             "smoother_weight_block": {
-                "shape": [min(512, len(genes)), sj_training_count],
+                "shape": (
+                    [min(512, len(genes)), sj_training_count]
+                    if args.regularization_method == "native"
+                    else [sj_training_count]
+                ),
                 "dtype": "float64",
-                "nbytes_each": min(512, len(genes)) * sj_training_count * 8,
+                "nbytes_each": (
+                    min(512, len(genes)) * sj_training_count * 8
+                    if args.regularization_method == "native"
+                    else sj_training_count * 8
+                ),
                 "estimated_simultaneous_dense_arrays": 3,
-                "lifetime": "allocated and released once per prediction block and parameter curve",
+                "lifetime": "released after each prediction block or point",
             },
             "per_gene_parameter_vectors": {
                 "shape": [len(genes)],

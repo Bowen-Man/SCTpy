@@ -174,6 +174,40 @@ def test_cox_reid_v2_path_is_explicit() -> None:
     assert np.all(np.isfinite(result.regularized_theta[modeled]))
 
 
+def test_batched_cox_reid_preserves_v2_outputs() -> None:
+    counts, genes, cells = _overdispersed_fixture()
+    scalar = fit_transform(
+        counts,
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig.r_v2(
+            n_genes=None,
+            n_cells=None,
+            cox_reid_batch_size=None,
+        ),
+    )
+    batched = fit_transform(
+        sparse.csr_matrix(counts),
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig.r_v2(
+            n_genes=None,
+            n_cells=None,
+            cox_reid_batch_size=3,
+        ),
+    )
+
+    assert batched.config.statistical_mode == "r_v2"
+    assert_array_equal(batched.theta_postprocessed, scalar.theta_postprocessed)
+    assert_array_equal(batched.parameter_outlier, scalar.parameter_outlier)
+    assert_array_equal(batched.hvg_rank, scalar.hvg_rank)
+    assert_allclose(batched.raw_intercept, scalar.raw_intercept, atol=1.0e-14)
+    assert_allclose(batched.regularized_intercept, scalar.regularized_intercept)
+    assert_allclose(batched.regularized_theta, scalar.regularized_theta)
+    assert_allclose(batched.residuals, scalar.residuals, atol=1.0e-11)
+    assert_allclose(batched.residual_variance, scalar.residual_variance, atol=1.0e-11)
+
+
 def test_theta_moment_postprocess_is_visible_and_excluded_from_training() -> None:
     counts, genes, cells = _overdispersed_fixture()
     result = fit_transform(

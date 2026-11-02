@@ -102,6 +102,7 @@ def test_r_v2_preset_is_fixed_and_sampling_is_configurable() -> None:
     assert config.residual_block_size == 64
     assert config.fit_method == "cox_reid"
     assert config.cox_reid_gene_bin_size == 500
+    assert config.cox_reid_batch_size == 64
     assert config.dispersion_regularization == "sct_v2"
     assert config.regularization_method == "r_stats"
     assert config.regularization_support == "clamp"
@@ -117,6 +118,7 @@ def test_statistical_modes_do_not_change_the_default_path() -> None:
     assert SCTConfig.r_v2() == SCTConfig(
         fit_method="cox_reid",
         cox_reid_gene_bin_size=500,
+        cox_reid_batch_size=64,
         dispersion_regularization="sct_v2",
         regularization_method="r_stats",
         regularization_support="clamp",
@@ -132,6 +134,8 @@ def test_cox_reid_gene_bin_size_is_explicit_and_validated() -> None:
     )
     with pytest.raises(ValueError, match="cox_reid_gene_bin_size"):
         SCTConfig(cox_reid_gene_bin_size=0)
+    with pytest.raises(ValueError, match="cox_reid_batch_size"):
+        SCTConfig(cox_reid_batch_size=0)
 
 
 @pytest.mark.parametrize(

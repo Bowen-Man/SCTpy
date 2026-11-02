@@ -9,8 +9,10 @@ import numpy as np
 
 from ._fit import (
     FitMethod,
+    GeneFit,
     ThetaPostprocess,
     fit_cox_reid_offset,
+    fit_cox_reid_offset_batch,
     fit_nb_offset,
     local_median_dispersion_trend,
     offset_intercept,
@@ -63,6 +65,7 @@ class SCTConfig:
     optimizer_gtol: float = 1e-6
     residual_block_size: int = 256
     cox_reid_gene_bin_size: int | None = None
+    cox_reid_batch_size: int | None = None
 
     @classmethod
     def r_v2(
@@ -73,6 +76,7 @@ class SCTConfig:
         n_cells: int | None = 2000,
         seed: int = 1448145,
         residual_block_size: int = 256,
+        cox_reid_batch_size: int | None = 64,
     ) -> SCTConfig:
         """Build the validated R-v2 compatibility configuration."""
         return cls(
@@ -82,6 +86,7 @@ class SCTConfig:
             seed=seed,
             fit_method="cox_reid",
             cox_reid_gene_bin_size=500,
+            cox_reid_batch_size=cox_reid_batch_size,
             dispersion_regularization="sct_v2",
             regularization_method="r_stats",
             regularization_support="clamp",
@@ -132,6 +137,8 @@ class SCTConfig:
             raise ValueError("fit_method must be 'nb_mle' or 'cox_reid'")
         if self.cox_reid_gene_bin_size is not None and self.cox_reid_gene_bin_size < 1:
             raise ValueError("cox_reid_gene_bin_size must be positive or None")
+        if self.cox_reid_batch_size is not None and self.cox_reid_batch_size < 1:
+            raise ValueError("cox_reid_batch_size must be positive or None")
         if self.bandwidth_adjust <= 0:
             raise ValueError("bandwidth_adjust must be positive")
         if self.outlier_mad_threshold <= 0:
@@ -352,22 +359,41 @@ def fit_transform(
         fit_message[gene_index] = "analytic Poisson offset"
         status[gene_index] = "poisson"
 
-    for gene_index in selected_genes:
-        if not step1_candidate[gene_index]:
-            continue
-        y = dense_gene_row(fit_counts, int(gene_index))
-        if resolved_config.fit_method == "cox_reid":
-            gene_fit = fit_cox_reid_offset(y, fit_library_size)
-        else:
-            gene_fit = fit_nb_offset(
-                y,
-                fit_library_size,
-                theta_min=resolved_config.theta_min,
-                theta_max=resolved_config.theta_max,
-                maxiter=resolved_config.optimizer_maxiter,
-                ftol=resolved_config.optimizer_ftol,
-                gtol=resolved_config.optimizer_gtol,
+    fit_candidates = selected_genes[step1_candidate[selected_genes]]
+    gene_fits: list[tuple[int, GeneFit]] = []
+    if (
+        resolved_config.fit_method == "cox_reid"
+        and resolved_config.cox_reid_batch_size is not None
+    ):
+        batch_size = resolved_config.cox_reid_batch_size
+        for start in range(0, fit_candidates.size, batch_size):
+            batch_indices = fit_candidates[start : start + batch_size]
+            batch_counts = dense_gene_block(fit_counts, batch_indices)
+            gene_fits.extend(
+                zip(
+                    (int(index) for index in batch_indices),
+                    fit_cox_reid_offset_batch(batch_counts, fit_library_size),
+                    strict=True,
+                )
             )
+    else:
+        for gene_index in fit_candidates:
+            y = dense_gene_row(fit_counts, int(gene_index))
+            if resolved_config.fit_method == "cox_reid":
+                gene_fit = fit_cox_reid_offset(y, fit_library_size)
+            else:
+                gene_fit = fit_nb_offset(
+                    y,
+                    fit_library_size,
+                    theta_min=resolved_config.theta_min,
+                    theta_max=resolved_config.theta_max,
+                    maxiter=resolved_config.optimizer_maxiter,
+                    ftol=resolved_config.optimizer_ftol,
+                    gtol=resolved_config.optimizer_gtol,
+                )
+            gene_fits.append((int(gene_index), gene_fit))
+
+    for gene_index, gene_fit in gene_fits:
         raw_intercept[gene_index] = gene_fit.intercept
         raw_theta[gene_index] = gene_fit.theta
         converged[gene_index] = gene_fit.converged

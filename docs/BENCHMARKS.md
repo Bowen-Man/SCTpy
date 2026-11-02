@@ -1,6 +1,6 @@
 # CPU benchmark and profiling report
 
-Status: measured on 2026-11-02 on Windows 11, Python 3.13.7, AMD Ryzen 9 9950X3D
+Status: measured on 2026-11-03 on Windows 11, Python 3.13.7, AMD Ryzen 9 9950X3D
 (16 cores/32 logical processors), approximately 93.6 GiB RAM, NumPy linked to
 OpenBLAS 0.3.30. These are fixture-and-machine results, not general performance claims.
 
@@ -31,31 +31,30 @@ cox_reid / gene_bin_500 / sct_v2 / r_stats / clamp / moment_ratio
 
 | Fixture | Median compute wall | Median process CPU | Median peak RSS | Median RSS growth | Budget |
 |---|---:|---:|---:|---:|---|
-| 800 x 240 | 1.266 s | 1.297 s | 80.00 MiB | 8.68 MiB | 60 s / 2 GiB |
-| 3200 x 240 | 5.249 s | 5.422 s | 108.79 MiB | 37.53 MiB | 180 s / 4 GiB |
+| 800 x 240 | 0.728 s | 0.734 s | 81.07 MiB | 10.01 MiB | 60 s / 2 GiB |
+| 3200 x 240 | 2.961 s | 3.000 s | 110.07 MiB | 39.09 MiB | 180 s / 4 GiB |
 
 Median uninstrumented stage timers:
 
 | Fixture | Fit | Regularization | Residuals + HVG | Total |
 |---|---:|---:|---:|---:|
-| 800 x 240 | 1.213 s | 0.0330 s | 0.0025 s | 1.265 s |
-| 3200 x 240 | 4.993 s | 0.1342 s | 0.0263 s | 5.248 s |
+| 800 x 240 | 0.686 s | 0.0320 s | 0.0025 s | 0.727 s |
+| 3200 x 240 | 2.767 s | 0.1466 s | 0.0162 s | 2.960 s |
 
-In a same-session five-run A/B on the larger fixture, the previous all-gene trend and the
-500-gene compatibility trend had median compute times of 5.268 s and 5.249 s. Their
-per-run sampled RSS ranges overlapped; the respective median peaks were 101.98 MiB and
-108.79 MiB. This is insufficient evidence for either a speedup or a memory regression,
-so the bin change is accepted only for correctness. **measured**
+In a same-session A/B on the larger fixture, scalar initial fitting had median compute and
+fit times of 4.502 s and 4.301 s. Grouping 64 independent score evaluations reduced them
+to 2.961 s and 2.767 s: `1.52x` end-to-end and `1.55x` for the fit stage. Median sampled
+peak RSS changed from 108.59 MiB to 110.07 MiB (`+1.4%`). **measured**
 
-On the larger fixture, Cox--Reid fitting is about 95.1% of stage time;
-regularization is about 2.6%, and residual construction plus HVG ranking is about 0.5%.
-cProfile recorded 3,091 per-gene fits, 9,262 Brent root solves, and 53,675 evaluations of
-the Cox--Reid score. The score function was the largest project-owned cumulative call
-path. Call tracing raised wall time to 14.08 seconds, so these counts identify structure
-but the percentages above come from uninstrumented runs. **measured**
+The optimized fit remains about 93.5% of stage time; regularization is about 5.0%, and
+residual construction plus HVG ranking is about 0.5%. cProfile recorded 49 batched initial
+fits and 2,450 batched score calls. Preliminary and final intercepts deliberately retain
+their independent scalar roots. Call tracing raised total stage time to 5.72 seconds, so
+these counts identify structure but the percentages above come from uninstrumented runs.
+**measured**
 
-The instrumented larger run reported 107.33 MiB sampled peak RSS and 32.33 MiB
-`tracemalloc` peak. The latter remains a Python-only supplement.
+The instrumented larger run reported 118.37 MiB sampled peak RSS, 29.94 MiB RSS growth,
+and 32.90 MiB `tracemalloc` peak. The latter remains a Python-only supplement.
 
 ### Provisional alpha-default path
 
@@ -84,10 +83,11 @@ For the larger fixture, the CSR input is 6.64 MiB (`578,937` nonzeros) and the d
 residual output is 5.86 MiB. A 256 x 240 residual block is 0.469 MiB per float64 array;
 roughly five block-sized arrays can coexist and are released after each gene block.
 
-In the validated path, a Cox--Reid score evaluation operates on one dense 240-cell gene
-row at a time. The row and its temporary vectors are released between genes; no dense
-genes-by-genes or genes-by-cells fitting workspace is retained. The measured 37.53 MiB
-median RSS growth includes these working vectors, SciPy state, and the dense result.
+In the validated path, the initial Cox--Reid solve densifies at most 64 selected gene rows.
+A 64 x 240 float64 array is 0.117 MiB; the profiler budgets eight simultaneous arrays, or
+0.94 MiB, and releases the block before advancing. Preliminary and final intercepts still
+operate on one row. No dense genes-by-genes fitting workspace is retained. The measured
+39.09 MiB median RSS growth includes these blocks, SciPy state, and the dense result.
 
 In the provisional native path, the SJ derivative calculation is blocked at 256 training
 rows. Its pairwise temporary is about 256 x 3,000 float64 values (roughly 5.9 MiB per array
@@ -106,18 +106,17 @@ stage medians.
 
 ## GPU decision from evidence
 
-The evidence still does not justify a custom CUDA or Triton kernel. The isolated SJ
-functional result remains valid for the provisional native regularizer, but accelerating
-that 2.6% stage cannot materially change the validated v2 path on this fixture. The next
-candidate must address Cox--Reid score evaluation and root-solver orchestration. A batched
-CPU experiment should establish how much work can be grouped before a GPU experiment is
-added; divergent per-gene roots and transfer/launch costs remain open questions. Residual
-calculation should be reconsidered only on a fixture where profiling makes it material.
-See [GPU_FEASIBILITY.md](GPU_FEASIBILITY.md).
+The evidence still does not justify a custom CUDA or Triton kernel. It does establish a
+narrow candidate for an isolated CuPy experiment: the 64-gene Cox--Reid score block and
+safeguarded dispersion iterations. The scalar/batched correctness A/B preserved masks and
+HVG order, while the CPU experiment demonstrated useful grouping. Any GPU experiment must
+still measure H2D, kernel, D2H, divergence, and the 12 GiB working-set limit explicitly.
+Residual calculation remains out of scope until profiling makes it material. See
+[GPU_FEASIBILITY.md](GPU_FEASIBILITY.md).
 
 ## Reproduction
 
 ```bash
-python -m benchmarks.run_baseline --fixture benchmark-results/large/fixture.npz --manifest benchmark-results/large/fixture.selection.json --output benchmark-results/large/baseline-v2.json --warmups 1 --repeats 5 --threads 1 --time-budget-seconds 180 --memory-budget-mib 4096 --fit-method cox_reid --cox-reid-gene-bin-size 500 --dispersion-regularization sct_v2 --regularization-method r_stats --regularization-support clamp --theta-postprocess moment_ratio
-python -m benchmarks.profile_stages --fixture benchmark-results/large/fixture.npz --manifest benchmark-results/large/fixture.selection.json --output benchmark-results/large/profile-v2.json --profile benchmark-results/large/profile-v2.prof --fit-method cox_reid --cox-reid-gene-bin-size 500 --dispersion-regularization sct_v2 --regularization-method r_stats --regularization-support clamp --theta-postprocess moment_ratio
+python -m benchmarks.run_baseline --fixture benchmark-results/large/fixture.npz --manifest benchmark-results/large/fixture.selection.json --output benchmark-results/large/baseline-v2.json --warmups 1 --repeats 5 --threads 1 --time-budget-seconds 180 --memory-budget-mib 4096 --fit-method cox_reid --cox-reid-gene-bin-size 500 --cox-reid-batch-size 64 --dispersion-regularization sct_v2 --regularization-method r_stats --regularization-support clamp --theta-postprocess moment_ratio
+python -m benchmarks.profile_stages --fixture benchmark-results/large/fixture.npz --manifest benchmark-results/large/fixture.selection.json --output benchmark-results/large/profile-v2.json --profile benchmark-results/large/profile-v2.prof --fit-method cox_reid --cox-reid-gene-bin-size 500 --cox-reid-batch-size 64 --dispersion-regularization sct_v2 --regularization-method r_stats --regularization-support clamp --theta-postprocess moment_ratio
 ```
