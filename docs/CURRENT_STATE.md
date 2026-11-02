@@ -105,6 +105,8 @@ its full metrics and provenance are recorded in
 The pre-GPU correctness, real-data, memory/workspace telemetry, and profiled CPU-batching
 work are complete. Scalar/batched theta and outlier masks are exact on the fixed large
 gate; residual RMSE between paths is `1.18e-13`, and Top 1000/2000/3000 HVG order is exact.
+The batched sparse PBMC rerun also preserved exact named raw-infinite and outlier sets and
+exact Top 1000/2000/3000 HVG sets against the R oracle.
 The only justified next GPU work is an isolated, transfer-inclusive CuPy microbenchmark of
 the initial 64-gene Cox--Reid score/root block. It is not yet a GPU backend, and custom
 CUDA or Triton remains out of scope without that evidence.

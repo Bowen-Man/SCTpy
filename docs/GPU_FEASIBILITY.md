@@ -83,11 +83,12 @@ and result construction remain CPU candidates. This is a hybrid boundary, not a 
 pipeline migration. **project decision based on profiling**
 
 At 64 x 240, one float64 block is 0.117 MiB and the eight-array workspace estimate is
-0.94 MiB. At the sparse PBMC gate's 3,000 selected cells, those values become 1.46 MiB and
-11.72 MiB. Its 14,004 initial-fit candidates would require about 219 blocks and roughly
-321 MiB of count H2D traffic if every block moves once and remains resident for its root
-iterations. The full 36,601 x 3,000 dense residual result is about 838 MiB, so it fits a
-12 GiB device but is not part of the first microbenchmark. **inferred from measured shapes**
+0.94 MiB. The sparse PBMC fixture is 36,601 x 3,000, while its frozen model manifest fits
+2,000 genes across 2,000 selected cells. One fit block is therefore 0.98 MiB and its
+eight-array estimate is 7.81 MiB. The 2,000 fitted genes require 32 blocks and roughly
+30.5 MiB of count H2D traffic if every block moves once and remains resident for its root
+iterations. The full dense residual result is about 838 MiB, so it fits a 12 GiB device
+but is not part of the first microbenchmark. **inferred from measured shapes**
 
 The isolated experiment must report CPU, kernel, H2D, required scalar D2H, and complete
 transfer-inclusive time. It must also record active-root counts per iteration and device
