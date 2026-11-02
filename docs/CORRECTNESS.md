@@ -325,7 +325,8 @@ explicit stages: preliminary offset-intercept fitting, per-gene Cox--Reid adjust
 dispersion, and an abundance-local weighted-median dispersion trend used only for the
 intercept refit. External golden tests cover raw theta, zero dispersion, the trend, and
 final intercepts. The complete v2 comparison combines this fit with `sct_v2`, `r_stats`,
-`clamp`, and `moment_ratio`; none of these settings changes the alpha defaults.
+`clamp`, and `moment_ratio`; none of these settings changes the alpha defaults. The table
+below is the historical all-gene-trend checkpoint that motivated the controlled A/B.
 
 | Quantity | small fixture | larger fixture |
 |---|---:|---:|
@@ -339,11 +340,9 @@ final intercepts. The complete v2 comparison combines this fit with `sct_v2`, `r
 | parameter-outlier mask | exact | exact |
 | HVG Top 1000/2000/3000 | n/a | exact / exact / exact |
 
-Level A and Level B remain mutually identical at the reported precision. The largest
-remaining discrepancy is the raw intercept, where small ordering/stopping differences in
-the preliminary fit feed the local-median trend. Parameter smoothing reduces that error by
-roughly an order of magnitude, and all pre-registered gates pass without changing their
-tolerances.
+Level A and Level B remain mutually identical at the reported precision. At this
+checkpoint the largest discrepancy was the raw intercept; the experiment below resolves
+its cause rather than attributing it to floating-point noise.
 
 ### Offset-fit trace and gene-bin A/B
 
@@ -378,6 +377,25 @@ gene-bin-local trend estimation as the confirmed cause. The remaining `3.88e-10`
 compatible with solver and reduction-order differences; it is not used to justify
 bit-identity work. **measured on 2026-11-02**
 
+The compatibility preset now fixes this confirmed setting while the native default stays
+unchanged. Re-running the complete gate gives:
+
+| Quantity | 800 x 240 | 3200 x 240 |
+|---|---:|---:|
+| raw intercept RMSE | 3.96e-10 | 3.88e-10 |
+| raw log10(theta) RMSE | 6.20e-7 | 2.36e-6 |
+| regularized intercept RMSE | 5.07e-6 | 4.94e-6 |
+| regularized log10(theta) RMSE | 1.44e-8 | 1.55e-8 |
+| clipped Pearson residual RMSE | 2.59e-6 | 2.56e-6 |
+| residual variance RMSE | 1.73e-6 | 1.73e-6 |
+| raw finite/Inf mask | exact | exact |
+| parameter-outlier mask | exact | exact |
+| HVG Top 1000/2000/3000 | n/a | exact / exact / exact |
+
+The raw theta estimator is intentionally unchanged. Regularized-intercept RMSE improves
+by about 8.4x and residual RMSE by about 26.7x on the larger fixture, with no gate
+relaxation. **measured on 2026-11-02**
+
 ```bash
 python -m benchmarks.compare_correctness \
   --fixture benchmark-results/large/fixture.npz \
@@ -385,6 +403,7 @@ python -m benchmarks.compare_correctness \
   --r-oracle benchmark-results/large/r-oracle \
   --reference benchmark-results/large/reference-v0.4.0.npz \
   --fit-method cox_reid \
+  --cox-reid-gene-bin-size 500 \
   --dispersion-regularization sct_v2 \
   --regularization-method r_stats \
   --regularization-support clamp \

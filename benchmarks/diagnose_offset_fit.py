@@ -44,13 +44,7 @@ def _resolve_bin_size(value: str, gene_count: int) -> int:
 def _batched_trend(
     abundance: np.ndarray, dispersion: np.ndarray, bin_size: int
 ) -> np.ndarray:
-    trend = np.empty(abundance.shape, dtype=np.float64)
-    for start in range(0, abundance.size, bin_size):
-        stop = min(start + bin_size, abundance.size)
-        trend[start:stop] = local_median_dispersion_trend(
-            abundance[start:stop], dispersion[start:stop]
-        )
-    return trend
+    return local_median_dispersion_trend(abundance, dispersion, gene_bin_size=bin_size)
 
 
 def _refit_intercepts(

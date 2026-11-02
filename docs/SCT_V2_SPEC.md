@@ -4,10 +4,10 @@ Status: implemented alpha contract for `0.1.0a1`. The labels below use the defin
 in [IMPLEMENTATION_SURVEY.md](IMPLEMENTATION_SURVEY.md).
 
 The public `SCTConfig.r_v2()` preset identifies the validated compatibility path:
-`cox_reid / sct_v2 / r_stats / clamp / moment_ratio`. Plain `SCTConfig()` retains the
-original native research defaults for backward compatibility. Any mixed configuration is
-labelled `experimental`; the `r_v2` label additionally requires the validated numerical
-defaults. **project decision**
+`cox_reid / gene_bin_500 / sct_v2 / r_stats / clamp / moment_ratio`. Plain
+`SCTConfig()` retains the original native research defaults for backward compatibility.
+Any mixed configuration is labelled `experimental`; the `r_v2` label additionally
+requires the validated numerical defaults. **project decision**
 
 ## Supported input contract
 
@@ -79,7 +79,11 @@ estimate, and an abundance-local weighted-median dispersion trend is used to ref
 intercept. The reported theta is the inverse raw dispersion, not the trend value. The
 implementation is original NumPy/SciPy code with one-dimensional per-gene working sets.
 Fixed golden tests cover raw theta, the zero-dispersion branch, the local trend, and final
-intercepts. **confirmed from official source and measured**
+intercepts. `cox_reid_gene_bin_size=None` applies one trend across all fitted genes and
+preserves the native research behavior. The R-v2 preset uses 500 because the external
+oracle applies its local trend within 500-gene bins; this changes statistical output and
+must not be treated as a transparent performance knob. **confirmed from official source
+and measured**
 
 ## Poisson-like genes
 

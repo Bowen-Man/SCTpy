@@ -30,7 +30,7 @@ nb_mle / native / native / extrapolate / none
 `SCTConfig.r_v2()` is the formal compatibility preset:
 
 ```text
-cox_reid / sct_v2 / r_stats / clamp / moment_ratio
+cox_reid / gene_bin_500 / sct_v2 / r_stats / clamp / moment_ratio
 ```
 
 Mixed paths are explicitly labelled `experimental`. Changing selection counts or the
@@ -58,10 +58,9 @@ contrary evidence.
 
 ## Numerical gap classification
 
-- **Confirmed issue:** the R oracle applies the local dispersion trend inside gene bins of
-  500. The current compatibility path applies it once across all 3,091 fit genes. A
-  controlled bin-size A/B reduces raw-intercept RMSE from `4.24e-4` to `3.88e-10` only at
-  bin size 500.
+- **Resolved issue:** the R oracle applies the local dispersion trend inside gene bins of
+  500. The compatibility preset now encodes this setting, reducing raw-intercept RMSE from
+  `4.24e-4` to `3.88e-10` on the larger fixed fixture.
 - **Falsified on the larger fixture:** preliminary offset iteration/stopping behavior is
   not the dominant gap. The A/B holds every preliminary and dispersion fit fixed, and the
   opt-in trace records score evaluations and solver termination directly.
@@ -72,8 +71,9 @@ contrary evidence.
 
 ## Performance and backend boundary
 
-On the controlled larger fixture, the validated path has median compute time `5.855 s`,
-of which Cox--Reid fitting is `5.634 s` (96.2%). Median peak RSS is `105.98 MiB`.
+On the controlled larger fixture, the updated validated path has median compute time
+`5.249 s`, of which Cox--Reid fitting is `4.993 s` (95.1%). Median sampled peak RSS is
+`108.79 MiB`.
 Regularization and residual/HVG work are not current optimization targets. The next
 falsifiable performance experiment is batched CPU Cox--Reid score evaluation; GPU work is
 deferred until batching, root divergence, transfers, and memory scaling are measured.
@@ -88,6 +88,4 @@ The differential report now exports a versioned stage record with input/selectio
 provenance, numeric masks, appropriate relative errors, convergence summaries, top-error
 genes, and complete HVG rank agreement.
 
-1. Encode the confirmed 500-gene local-trend bin only in the R-v2 compatibility contract,
-   then rerun every correctness gate and the controlled performance baseline.
-2. Add licensed real-data provenance and validation before generalizing fixture results.
+1. Add licensed real-data provenance and validation before generalizing fixture results.

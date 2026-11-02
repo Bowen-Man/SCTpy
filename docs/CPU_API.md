@@ -40,7 +40,7 @@ perform device movement themselves.
 `sctransform` 0.4.3, and `glmGamPoi` 1.22.0. It selects:
 
 ```text
-cox_reid / sct_v2 / r_stats / clamp / moment_ratio
+cox_reid / gene_bin_500 / sct_v2 / r_stats / clamp / moment_ratio
 ```
 
 The preset accepts selection controls (`min_cells`, `n_genes`, `n_cells`, and `seed`) and
@@ -77,7 +77,10 @@ are intentionally not treated as identical.
 Raw fitting is explicit. `fit_method="nb_mle"` remains the alpha default. The optional
 `fit_method="cox_reid"` uses per-gene Cox--Reid adjusted dispersion estimates followed by
 an abundance-local weighted-median dispersion trend for the intercept refit. It is native
-NumPy/SciPy code and does not import `glmGamPoi` or R.
+NumPy/SciPy code and does not import `glmGamPoi` or R. The independent default evaluates
+one trend across all fitted genes. `SCTConfig.r_v2()` instead fixes
+`cox_reid_gene_bin_size=500`; the bin boundary affects the local trend and is therefore a
+statistical compatibility setting, not an execution-only block size.
 
 Dispersion regularization is also explicit. The alpha default remains `native`; use
 `SCTConfig(dispersion_regularization="sct_v2")` to smooth
