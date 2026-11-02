@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "artifact": {
+    "file": "r_v2_small_golden.npz",
+    "sha256": "59cfeaa3032fc837662225e41dc43a0389b898a6e7f6b5e770908da95ca7ffe0",
+    "contents": [
+      "selection manifest arrays",
+      "ordered eligible and raw-fit gene names",
+      "raw and regularized parameters",
+      "residual mean and variance",
+      "complete HVG order and named branch masks"
+    ],
+    "omitted": [
+      "synthetic counts, which are regenerated deterministically",
+      "the full residual matrix"
+    ]
+  },
+  "fixture": {
+    "generator": "benchmarks.generate_fixture.generate_counts/v1",
+    "seed": 20261102,
+    "shape_genes_by_cells": [800, 240],
+    "counts_sha256": "daa4251f89ad449d0508ebef01bca762ea3960830b0160623d809db1131c2337",
+    "license": "BSD-3-Clause (synthetic project-generated fixture)"
+  },
+  "selection": {
+    "algorithm": "uniform_without_replacement_pcg64_v1",
+    "min_cells": 5,
+    "selected_genes": 778,
+    "selected_cells": 240,
+    "note": "The frozen historical manifest is replayed directly; no cross-language random stream is compared."
+  },
+  "oracle": {
+    "generated_on": "2026-11-02",
+    "r": "4.5.2",
+    "sctransform": "0.4.3",
+    "glmGamPoi": "1.22.0",
+    "matrixStats": "1.5.0",
+    "use": "External numerical oracle only; no oracle source, binary, runtime, or dependency is redistributed."
+  },
+  "distribution": {
+    "license": "BSD-3-Clause",
+    "basis": "Factual numerical outputs produced from a BSD-3-Clause synthetic fixture."
+  }
+}

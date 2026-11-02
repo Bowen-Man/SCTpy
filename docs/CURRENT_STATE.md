@@ -1,8 +1,10 @@
 # Current state assessment
 
-Audit date: **2026-11-02**. Audited commit:
-`908b39844879624069aa976edb392fde14425736` on a clean `main` branch. The corresponding
-GitHub Actions run completed successfully on Windows and Linux with Python 3.10--3.13.
+Audit date: **2026-11-03**. Pre-GPU audit baseline:
+`00dedea17ed9f575b922bd706b369c37b4e2482f` on a clean `main` branch. Its GitHub Actions
+run completed successfully on Windows and Linux with Python 3.10--3.13. The pre-GPU
+validation work adds macOS 3.11/3.13 coverage and a frozen small-fixture compatibility
+gate to that matrix.
 
 ## Package structure and dependencies
 
@@ -89,5 +91,12 @@ provenance, numeric masks, appropriate relative errors, convergence summaries, t
 genes, and complete HVG rank agreement.
 
 P0 repository audit, compatibility preset, stage diagnostics, offset-fit diagnosis, and
-fixed-fixture non-regression are complete. The next P1 correctness task is licensed
-real-data provenance and validation before generalizing synthetic-fixture results.
+external fixed-fixture non-regression are complete. The pre-GPU audit also found and
+repaired a stale fixture-generator call site after the sparse-aware selection API gained
+explicit matrix and geometric-mean inputs. A CLI regression test now protects every
+replay artifact.
+
+The remaining pre-GPU work is to freeze the diagnostic JSON contract, cover numerical
+extremes, select a licensed real-data source with immutable provenance, validate it, and
+profile a CPU-batched Cox--Reid experiment. GPU implementation remains deferred until
+those results identify a justified device workload.

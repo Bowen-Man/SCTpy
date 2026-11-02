@@ -66,8 +66,9 @@ ruff format --check .
 python -m pytest
 ```
 
-The package supports Python 3.10 through 3.13 on Windows and Linux. GPU packages are
-never required for CPU installation.
+The package supports Python 3.10 through 3.13. CI exercises every supported Python on
+Windows and Linux, plus Python 3.11 and 3.13 on macOS. GPU packages are never required
+for CPU installation.
 
 AnnData support is an optional, non-mutating adapter:
 
