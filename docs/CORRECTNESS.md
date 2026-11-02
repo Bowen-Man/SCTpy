@@ -31,9 +31,37 @@ all small and large fixture gates, including exact large-fixture HVG Top 1000/20
   `b79041796e3f7ca3b33029adde5d7132eedd2430`, called only through its public API.
 - Level C: this repository's independent NumPy/SciPy implementation.
 
-No oracle package, R runtime, generated binary, or golden output is packaged or committed.
-The exporters write only to the ignored `benchmark-results/` directory. Level A and B are
-execution-time black boxes and are not dependencies of the package, build, or CI.
+No oracle package, R runtime, or generated binary is packaged or committed. Level A and B
+remain execution-time black boxes and are not dependencies of the package, build, or CI.
+The exporters write full diagnostic outputs only to the ignored `benchmark-results/`
+directory.
+
+CI does commit one deliberately small numerical artifact,
+`tests/data/r_v2_small_golden.npz`. It contains 49 KiB of factual numeric outputs for the
+small synthetic fixture: the selection arrays, parameters, per-gene residual summaries,
+complete HVG order, and named branch masks. It contains neither counts nor the full
+residual matrix. Its adjacent provenance record fixes the input hash, generator, seed,
+oracle versions, contents, and licensing basis.
+
+## Frozen CI compatibility gate
+
+The small fixture is regenerated in CI and its byte-level count hash is checked before
+the compatibility path runs on a sparse CSR matrix. The gate requires exact raw-theta
+finite/Inf classification, Poisson genes, parameter outliers, and complete HVG order. Its
+numeric limits were set with margin above the measured result, rather than relaxed after a
+failure:
+
+| Quantity | RMSE limit | Maximum absolute-error limit |
+|---|---:|---:|
+| raw intercept | `1e-7` | `1e-6` |
+| log10 raw theta | `1e-5` | `1e-3` |
+| regularized intercept | `1e-4` | `1e-3` |
+| log10 regularized theta | `1e-6` | `1e-5` |
+| residual mean | `1e-4` | `1e-3` |
+| residual variance | `1e-4` | `1e-3` |
+
+This is a fast cross-platform regression gate, not a replacement for the full external
+Level-A/Level-B differential workflow or real-data validation.
 
 ## Pre-registered gate result
 

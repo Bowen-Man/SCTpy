@@ -8,6 +8,7 @@ from scipy import io as scipy_io
 from scipy import sparse
 
 from sctransform_native import create_selection_manifest
+from sctransform_native._matrix import matrix_statistics
 
 from ._common import count_sha256, write_json
 
@@ -68,12 +69,15 @@ def main() -> None:
         cell_names=np.asarray(cell_names),
     )
 
-    detection = np.count_nonzero(counts, axis=1)
+    gene_mean, gene_variance, detection, geometric_mean = matrix_statistics(counts)
     eligible = detection >= args.min_cells
+    step1_candidate = eligible & (gene_variance > gene_mean)
     manifest = create_selection_manifest(
+        counts_gxc=counts,
         gene_names=gene_names,
         cell_names=cell_names,
-        eligible_genes=eligible,
+        eligible_genes=step1_candidate,
+        geometric_mean=geometric_mean,
         min_cells=args.min_cells,
         requested_genes=None,
         requested_cells=None,
@@ -101,6 +105,7 @@ def main() -> None:
             "dtype": str(counts.dtype),
             "counts_sha256": count_sha256(counts),
             "eligible_gene_count": int(np.count_nonzero(eligible)),
+            "selected_gene_count": len(manifest.selected_gene_indices),
             "license": "BSD-3-Clause (synthetic project-generated fixture)",
             "selection_manifest": manifest_path.name,
         },
