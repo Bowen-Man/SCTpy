@@ -3,9 +3,17 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Protocol
 
-from .backend import ImplicitDeviceTransferError, infer_device
 from .core import SCTConfig, SCTResult, fit_transform
 from .selection import SelectionManifest
+
+
+class ImplicitDeviceTransferError(TypeError):
+    """Raised when the adapter would otherwise hide a device transfer."""
+
+
+def _is_cuda_array(array: object) -> bool:
+    module = type(array).__module__.split(".", maxsplit=1)[0]
+    return module in {"cupy", "cupyx"} or hasattr(array, "__cuda_array_interface__")
 
 
 class AnnDataLike(Protocol):
@@ -35,8 +43,7 @@ def fit_transform_anndata(
         except KeyError as error:
             raise KeyError(f"AnnData layer {layer!r} does not exist") from error
 
-    device = infer_device(counts)
-    if device.kind != "cpu":
+    if _is_cuda_array(counts):
         raise ImplicitDeviceTransferError(
             "the AnnData adapter received CUDA-backed counts; explicitly transfer the "
             "selected matrix to CPU before calling the CPU backend"
