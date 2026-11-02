@@ -1,7 +1,7 @@
 # Licensed real-data validation plan
 
-Status: provenance and deterministic derivation fixed on 2026-11-03; differential results
-are not yet claimed.
+Status: provenance, deterministic derivation, and the first Level-A/B/C differential were
+completed on 2026-11-03.
 
 ## Source
 
@@ -26,6 +26,13 @@ the HDF5 matrix is 36,601 features by 11,996 barcodes with 27,164,608 nonzero en
 all features are `Gene Expression` on `GRCh38`. Ensembl feature IDs and barcodes are
 unique, while ten gene-symbol collisions make symbols unsuitable as canonical names.
 
+The deterministic 3,000-cell derivation has 6,788,544 nonzero entries and occupies about
+51.9 MiB as canonical CSR before compression (12.7 MB in the generated fixture archive).
+It retains 17,155 genes at `min_cells=5`, of which 14,004 satisfy the step-1
+overdispersion rule. Its canonical sparse-count SHA-256 is
+`d9c23eda8654b17fab1a3672df4961b53f2d9e63356dd631de567c76db570532`.
+**measured on 2026-11-03**
+
 ## Deterministic validation fixture
 
 The validation fixture will be derived without biological QC or expression-dependent cell
@@ -39,8 +46,10 @@ filtering:
    the selected source indices. Preserve barcode strings exactly.
 5. Retain raw integer UMI counts. The SCT `min_cells=5` rule, not an upstream custom
    filter, determines eligible genes.
-6. Create and persist one explicit v2 selection manifest for all Level-A/B/C runs. No
-   cross-language random stream is compared.
+6. Run Level A with `set.seed(20261103)`, `n_genes=2000`, and `n_cells=2000`, then freeze
+   its exported ordered gene/cell selection as the manifest replayed by Levels B and C.
+   Order is part of the contract because it defines 500-gene fit bins; the manifest, not
+   an assumption about a cross-language random stream, defines the comparison.
 7. Record the derived sparse matrix hash, ordered-name hashes, shapes, `nnz`, selection
    manifest hash, package versions, and every numerical threshold before inspecting the
    differential result.
@@ -60,3 +69,41 @@ the failure; it does not trigger an unreviewed increase.
 
 Real-data validation is an additional generalization check. It does not replace the
 synthetic frozen CI gate and will not be used to weaken its tolerances.
+
+`benchmarks.prepare_pbmc_fixture` verifies the source hash before reading it and stores
+the derived counts as canonical CSR arrays. The manual `Real-data validation` workflow is
+run either from the Actions UI or by applying the `real-data-validation` label to a PR.
+It installs both external oracles only inside that isolated job and uploads compact
+diagnostics, never the source HDF5, sparse fixture, full residual matrix, or native binary.
+
+## First differential result
+
+The isolated GitHub Actions run
+[`41492647448`](https://github.com/Bowen-Man/sctransform-native/actions/runs/41492647448)
+used R 4.5.2, `sctransform` 0.4.3, `glmGamPoi` 1.22.0, `matrixStats` 1.5.0,
+and Level B at commit `b79041796e3f7ca3b33029adde5d7132eedd2430`. The R fit selected
+2,000 genes and 2,000 cells; 142 raw theta values were infinite and 159 parameter outliers
+were reported. Level C matched both named masks exactly. **measured**
+
+| Level C versus Level A | Result |
+|---|---:|
+| raw intercept RMSE | `4.83e-9` |
+| raw log10(theta) RMSE | `1.03e-5` |
+| regularized intercept RMSE | `2.02e-4` |
+| regularized log10(theta) RMSE | `2.08e-8` |
+| Pearson residual RMSE | `1.77e-5` |
+| residual-variance RMSE | `2.20e-5` |
+| residual-variance Spearman | `0.9999999952` |
+| HVG Top 1000/2000/3000 Jaccard | `1.0 / 1.0 / 1.0` |
+
+The complete HVG order was not identical; its Spearman correlation was `0.9999999952`.
+Level C's recorded fit and total stage times were 5.88 s and 7.32 s on the hosted runner.
+These are one-fixture measurements, not general accuracy or performance claims. The
+pre-registered broad real-data/full-differential thresholds passed against both Level A
+and Level B; no threshold was changed after observing this run.
+
+An initial controlled run canonicalized the same named selection into source order. It
+preserved the selected sets but changed 500-gene bin membership, producing raw-intercept
+RMSE `6.06e-3`. Replaying the oracle's ordered manifest reduced that value to `4.83e-9`.
+This identifies selection order as part of the numerical contract when gene-bin fitting
+is enabled. **measured**

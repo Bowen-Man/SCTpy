@@ -377,7 +377,9 @@ def fit_transform(
         status[gene_index] = "fit" if gene_fit.converged else "fit_failed"
 
     if resolved_config.fit_method == "cox_reid":
-        fitted = np.flatnonzero(selected_gene_mask & step1_candidate & converged)
+        fitted = selected_genes[
+            step1_candidate[selected_genes] & converged[selected_genes]
+        ]
         raw_dispersion = np.zeros(fitted.size, dtype=np.float64)
         finite_theta = np.isfinite(raw_theta[fitted])
         raw_dispersion[finite_theta] = 1.0 / raw_theta[fitted[finite_theta]]

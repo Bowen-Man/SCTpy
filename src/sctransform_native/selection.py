@@ -197,10 +197,10 @@ def validate_selection_manifest(
         raise ValueError("selection contains an out-of-range gene index")
     if np.any(cell_indices < 0) or np.any(cell_indices >= len(cell_names)):
         raise ValueError("selection contains an out-of-range cell index")
-    if not np.array_equal(gene_indices, np.unique(gene_indices)):
-        raise ValueError("selected gene indices must be unique and sorted")
-    if not np.array_equal(cell_indices, np.unique(cell_indices)):
-        raise ValueError("selected cell indices must be unique and sorted")
+    if np.unique(gene_indices).size != gene_indices.size:
+        raise ValueError("selected gene indices must be unique")
+    if np.unique(cell_indices).size != cell_indices.size:
+        raise ValueError("selected cell indices must be unique")
     if not np.all(eligible_genes[gene_indices]):
         raise ValueError("selection includes genes below min_cells")
     expected_gene_names = tuple(gene_names[item] for item in gene_indices)

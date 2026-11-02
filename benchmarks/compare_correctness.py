@@ -13,6 +13,7 @@ from scipy import sparse
 
 from sctransform_native import SCTConfig, fit_transform
 from sctransform_native._fit import theta_moment_ratio_mask
+from sctransform_native._matrix import matrix_statistics
 
 from ._common import count_sha256, load_fixture, load_manifest, write_json
 from .correctness import (
@@ -252,8 +253,7 @@ def native_result(
     selected_indices = np.flatnonzero(result.selected_gene)
     selected_cells = np.asarray(manifest.selected_cell_indices, dtype=np.int64)
     fit_counts = counts[:, selected_cells]
-    fit_mean = np.mean(fit_counts, axis=1, dtype=np.float64)
-    fit_variance = np.var(fit_counts, axis=1, ddof=1, dtype=np.float64)
+    fit_mean, fit_variance, _, _ = matrix_statistics(fit_counts)
     if theta_postprocess == "moment_ratio":
         moment_ratio = result.theta_postprocessed[fit_indices] | np.isinf(
             result.raw_theta[fit_indices]
@@ -389,6 +389,11 @@ def main() -> None:
         ),
         "fit_cell_oracle_status": (
             "not_exported" if level_a_fit_cells is None else "available"
+        ),
+        "fit_cell_set": (
+            None
+            if level_a_fit_cells is None
+            else named_set_metrics(manifest.selected_cell_names, level_a_fit_cells)
         ),
         "cross_language_seed_comparison": "not_used; manifest names define selection",
     }

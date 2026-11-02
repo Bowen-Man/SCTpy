@@ -99,6 +99,11 @@ replay artifact.
 The diagnostic JSON contract, numerical-extreme coverage, and licensed real-data source
 with immutable provenance are now fixed. A daily isolated workflow reruns the larger
 Level-A/Level-B/Level-C differential and both stage-reinjection checks without adding R or
-the GPL oracle to package dependencies. The remaining pre-GPU work is real-data
-validation and a profiled CPU-batched Cox--Reid experiment. GPU implementation remains
-deferred until those results identify a justified device workload.
+the GPL oracle to package dependencies. The first sparse PBMC Level-A/B/C differential
+also passed with exact named theta/outlier masks and exact HVG Top 1000/2000/3000 sets;
+its full metrics and provenance are recorded in
+[REAL_DATA_VALIDATION.md](REAL_DATA_VALIDATION.md).
+
+The remaining pre-GPU work is memory/workspace telemetry and a profiled CPU-batched
+Cox--Reid experiment. GPU implementation remains deferred until those results identify a
+justified device workload.
