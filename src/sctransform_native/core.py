@@ -235,9 +235,7 @@ def fit_transform(
     if not np.any(eligible):
         raise ValueError("no genes satisfy min_cells")
     step1_candidate = eligible & (gene_variance > gene_mean)
-    poisson_gene = eligible & (
-        (gene_mean < 0.001) | (gene_variance <= gene_mean)
-    )
+    poisson_gene = eligible & ((gene_mean < 0.001) | (gene_variance <= gene_mean))
     timing["input_statistics"] = perf_counter() - stage_start
 
     stage_start = perf_counter()

@@ -94,11 +94,7 @@ def create_selection_manifest(
         raise ValueError("gene selection arrays must match the number of genes")
 
     rng = np.random.Generator(np.random.PCG64(seed))
-    cell_count = (
-        cells
-        if requested_cells is None
-        else min(requested_cells, cells)
-    )
+    cell_count = cells if requested_cells is None else min(requested_cells, cells)
     selected_cells = (
         np.arange(cells, dtype=np.int64)
         if cell_count == cells
