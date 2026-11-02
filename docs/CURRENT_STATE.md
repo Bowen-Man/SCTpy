@@ -1,7 +1,7 @@
 # Current state assessment
 
 Audit date: **2026-11-03**. Pre-GPU audit baseline:
-`00dedea17ed9f575b922bd706b369c37b4e2482f` on a clean `main` branch. Its GitHub Actions
+`91016da` on a clean `main` branch. Its GitHub Actions
 run completed successfully on Windows and Linux with Python 3.10--3.13. The pre-GPU
 validation work adds pinned macOS 15 x64 coverage on Python 3.11/3.13 and a frozen
 small-fixture compatibility gate to that matrix.
@@ -41,8 +41,7 @@ changed, preserving the alpha API.
 
 ## Independently reproduced correctness baseline
 
-The audit reran the local test suite and both fixed external-oracle comparisons before any
-code change. The suite reported 66 passed tests and one explicit optional-CuPy skip.
+The final pre-GPU suite reports 85 passed tests and one explicit optional-CuPy skip.
 
 | Metric vs R oracle | 800 x 240 | 3200 x 240 |
 |---|---:|---:|
@@ -73,12 +72,11 @@ contrary evidence.
 
 ## Performance and backend boundary
 
-On the controlled larger fixture, the updated validated path has median compute time
-`5.249 s`, of which Cox--Reid fitting is `4.993 s` (95.1%). Median sampled peak RSS is
-`108.79 MiB`.
-Regularization and residual/HVG work are not current optimization targets. The next
-falsifiable performance experiment is batched CPU Cox--Reid score evaluation; GPU work is
-deferred until batching, root divergence, transfers, and memory scaling are measured.
+On the controlled larger fixture, 64-gene Cox--Reid batching reduces median compute time
+from `4.502 s` to `2.961 s` (`1.52x`) and fit time from `4.301 s` to `2.767 s` (`1.55x`).
+Median sampled peak RSS changes from `108.59 MiB` to `110.07 MiB`. The batch working-set
+estimate is 0.94 MiB at 64 x 240, and every block is released before advancing.
+Regularization and residual/HVG work are not current optimization targets.
 
 Production execution is CPU NumPy/SciPy only. CUDA inputs are rejected at the AnnData
 boundary rather than copied implicitly. CuPy currently appears only in an isolated,
@@ -104,6 +102,11 @@ also passed with exact named theta/outlier masks and exact HVG Top 1000/2000/300
 its full metrics and provenance are recorded in
 [REAL_DATA_VALIDATION.md](REAL_DATA_VALIDATION.md).
 
-The remaining pre-GPU work is memory/workspace telemetry and a profiled CPU-batched
-Cox--Reid experiment. GPU implementation remains deferred until those results identify a
-justified device workload.
+The pre-GPU correctness, real-data, memory/workspace telemetry, and profiled CPU-batching
+work are complete. Scalar/batched theta and outlier masks are exact on the fixed large
+gate; residual RMSE between paths is `1.18e-13`, and Top 1000/2000/3000 HVG order is exact.
+The batched sparse PBMC rerun also preserved exact named raw-infinite and outlier sets and
+exact Top 1000/2000/3000 HVG sets against the R oracle.
+The only justified next GPU work is an isolated, transfer-inclusive CuPy microbenchmark of
+the initial 64-gene Cox--Reid score/root block. It is not yet a GPU backend, and custom
+CUDA or Triton remains out of scope without that evidence.

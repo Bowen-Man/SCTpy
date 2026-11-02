@@ -444,6 +444,12 @@ The raw theta estimator is intentionally unchanged. Regularized-intercept RMSE i
 by about 8.4x and residual RMSE by about 26.7x on the larger fixture, with no gate
 relaxation. **measured on 2026-11-02**
 
+The execution-only 64-gene Cox--Reid batch was preregistered against the scalar path.
+Finite/Inf theta and outlier masks were exact, finite raw log10(theta) RMSE was
+`8.21e-10` (maximum `3.69e-8`), residual RMSE was `1.18e-13`, and Top
+1000/2000/3000 HVG order was exact. The external gates above remain unchanged.
+**measured on 2026-11-03**
+
 ```bash
 python -m benchmarks.compare_correctness \
   --fixture benchmark-results/large/fixture.npz \
@@ -452,6 +458,7 @@ python -m benchmarks.compare_correctness \
   --reference benchmark-results/large/reference-v0.4.0.npz \
   --fit-method cox_reid \
   --cox-reid-gene-bin-size 500 \
+  --cox-reid-batch-size 64 \
   --dispersion-regularization sct_v2 \
   --regularization-method r_stats \
   --regularization-support clamp \

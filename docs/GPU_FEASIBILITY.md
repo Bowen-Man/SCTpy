@@ -68,23 +68,42 @@ next end-to-end optimization target. Results are specific to this fixture and ma
 
 ## Current candidate
 
-cProfile of the validated path recorded 3,091 per-gene fits, 9,262 Brent root solves, and
-53,675 Cox--Reid score evaluations. The score function is the largest project-owned
-cumulative call path. It operates on one gene's selected-cell vector per evaluation, so
-an isolated experiment must first determine whether genes can be grouped without changing
-independent convergence semantics. Arithmetic intensity, root divergence, launch count,
-and the cost of moving sparse count rows remain **unknown**. No GPU implementation is
-justified until a batched CPU baseline and one transfer-inclusive microbenchmark answer
-those questions.
+The CPU batching prerequisite is complete. On the fixed 3200 x 240 fixture, a 64-gene
+block reduced median compute time from 4.502 s to 2.961 s (`1.52x`) and fit time from
+4.301 s to 2.767 s (`1.55x`). Median sampled peak RSS increased from 108.59 MiB to
+110.07 MiB. Scalar and batched finite/Inf theta and parameter-outlier masks were exact;
+finite raw log10(theta) RMSE was `8.21e-10`, residual RMSE was `1.18e-13`, and Top
+1000/2000/3000 HVG order was exact. **measured on 2026-11-03**
+
+The narrow GPU candidate is now the initial Cox--Reid dispersion score and safeguarded
+root iteration for one dense genes-by-selected-cells block. It performs repeated log,
+digamma, elementwise arithmetic, and cell-axis reductions while the block is resident.
+Sparse traversal, preliminary/final intercept roots, the 500-gene trend, regularization,
+and result construction remain CPU candidates. This is a hybrid boundary, not a whole
+pipeline migration. **project decision based on profiling**
+
+At 64 x 240, one float64 block is 0.117 MiB and the eight-array workspace estimate is
+0.94 MiB. The sparse PBMC fixture is 36,601 x 3,000, while its frozen model manifest fits
+2,000 genes across 2,000 selected cells. One fit block is therefore 0.98 MiB and its
+eight-array estimate is 7.81 MiB. The 2,000 fitted genes require 32 blocks and roughly
+30.5 MiB of count H2D traffic if every block moves once and remains resident for its root
+iterations. The full dense residual result is about 838 MiB, so it fits a 12 GiB device
+but is not part of the first microbenchmark. **inferred from measured shapes**
+
+The isolated experiment must report CPU, kernel, H2D, required scalar D2H, and complete
+transfer-inclusive time. It must also record active-root counts per iteration and device
+pool memory. Async copies or double buffering are not assumed useful until a synchronous
+baseline shows transfer exposure. Triton or custom CUDA remains unjustified.
 
 ## Interpretation boundary
 
 Even a fast result for this primitive would not establish an end-to-end GPU speedup. The
 historical SJ selector invokes the functional repeatedly through a root solve, while the
-current path performs thousands of small Cox--Reid root solves. An implementation candidate
-must show that saved compute exceeds transfers, launch costs, and additional working memory
-at a realistic gene count. For the current path this applies to Cox--Reid fitting, not the
-already measured SJ primitive.
+current path performs repeated Cox--Reid block evaluations with a shrinking active-root
+mask. An implementation candidate must show that saved compute exceeds transfers, launch
+costs, divergence, and additional working memory at a realistic gene and cell count. For
+the current path this applies to initial Cox--Reid fitting, not the already measured SJ
+primitive.
 
 RAPIDS-singlecell is not used as an SCT oracle: its documented Pearson-residual
 normalization uses one analytic shared theta and does not implement the v2 fixed-slope,

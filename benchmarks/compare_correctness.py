@@ -223,6 +223,7 @@ def native_result(
     *,
     fit_method: str = "nb_mle",
     cox_reid_gene_bin_size: int | None = None,
+    cox_reid_batch_size: int | None = None,
     dispersion_regularization: str = "native",
     regularization_method: str = "native",
     regularization_support: str = "extrapolate",
@@ -240,6 +241,7 @@ def native_result(
             n_cells=None,
             fit_method=fit_method,
             cox_reid_gene_bin_size=cox_reid_gene_bin_size,
+            cox_reid_batch_size=cox_reid_batch_size,
             dispersion_regularization=dispersion_regularization,
             regularization_method=regularization_method,
             regularization_support=regularization_support,
@@ -333,6 +335,7 @@ def main() -> None:
         default="nb_mle",
     )
     parser.add_argument("--cox-reid-gene-bin-size", type=int)
+    parser.add_argument("--cox-reid-batch-size", type=int)
     parser.add_argument(
         "--dispersion-regularization",
         choices=("native", "sct_v2"),
@@ -363,6 +366,7 @@ def main() -> None:
         args.manifest,
         fit_method=args.fit_method,
         cox_reid_gene_bin_size=args.cox_reid_gene_bin_size,
+        cox_reid_batch_size=args.cox_reid_batch_size,
         dispersion_regularization=args.dispersion_regularization,
         regularization_method=args.regularization_method,
         regularization_support=args.regularization_support,
@@ -402,6 +406,7 @@ def main() -> None:
         "generated_on": datetime.now(timezone.utc).date().isoformat(),
         "fit_method": args.fit_method,
         "cox_reid_gene_bin_size": args.cox_reid_gene_bin_size,
+        "cox_reid_batch_size": args.cox_reid_batch_size,
         "dispersion_regularization": args.dispersion_regularization,
         "regularization_method": args.regularization_method,
         "regularization_support": args.regularization_support,

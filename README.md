@@ -57,7 +57,8 @@ hvg_2000 = result.highly_variable_genes(2000)
 retains the original native research defaults for API compatibility; mixed, unvalidated
 algorithm combinations are reported as `config.statistical_mode == "experimental"`. The
 preset also fixes the compatibility-sensitive Cox--Reid gene bin at 500; it is not a
-performance-only batch size.
+performance-only batch size. Independent score evaluation uses a separately configurable,
+execution-only 64-gene block by default.
 
 ## Development
 

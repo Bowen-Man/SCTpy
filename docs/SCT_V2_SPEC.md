@@ -86,6 +86,14 @@ oracle applies its local trend within 500-gene bins; this changes statistical ou
 must not be treated as a transparent performance knob. **confirmed from official source
 and measured**
 
+Independent score evaluations may be grouped into a dense genes-by-selected-cells block.
+`cox_reid_batch_size` controls only this working set and does not alter selection order,
+the 500-gene trend bins, or the statistical mode. The validated v2 preset uses 64 genes;
+`None` retains the scalar execution path. On the fixed 3200 x 240 gate, scalar and batched
+finite/Inf theta and outlier masks were exact, finite raw log10(theta) RMSE was `8.21e-10`,
+residual RMSE between paths was `1.18e-13`, and Top 1000/2000/3000 HVG order was exact.
+**measured on 2026-11-03**
+
 ## Poisson-like genes
 
 Let `m_g` be the arithmetic mean across all cells and `s_g^2` the sample variance

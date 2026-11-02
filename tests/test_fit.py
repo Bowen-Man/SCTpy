@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 
 from sctransform_native._fit import (
+    _cox_reid_score_batch,
     fit_cox_reid_offset,
+    fit_cox_reid_offset_batch,
     fit_nb_offset,
     local_median_dispersion_trend,
     offset_intercept,
@@ -95,6 +97,55 @@ def test_cox_reid_fit_matches_external_golden_values() -> None:
 
     np.testing.assert_allclose(actual_theta, expected_theta, rtol=5.0e-9)
     np.testing.assert_allclose(actual_intercept, expected_intercept, rtol=1.0e-9)
+
+
+def test_batched_cox_reid_matches_score_golden_and_scalar_fit() -> None:
+    exposure = np.array(
+        [80, 95, 110, 130, 90, 150, 105, 125, 100, 140, 115, 85],
+        dtype=np.float64,
+    )
+    counts = np.array(
+        [
+            [0, 1, 0, 2, 1, 3, 0, 1, 4, 2, 1, 0],
+            [0, 0, 0, 0, 1, 0, 10, 0, 0, 20, 0, 0],
+            [5, 6, 4, 5, 7, 6, 5, 8, 7, 6, 5, 4],
+            [1, 4, 2, 8, 1, 12, 2, 7, 3, 11, 2, 1],
+        ],
+        dtype=np.float64,
+    )
+    log_dispersion = np.log(np.array([0.1, 2.0, 1.0e-8, 0.5]))
+    mu = np.array([1.0, 1.5, 5.5, 4.0])[:, None] * exposure / exposure.mean()
+
+    expected_score = np.array(
+        [
+            0.03971052386506343,
+            5.592784326327438,
+            -1.68518843091391e-07,
+            -1.168731328214636,
+        ]
+    )
+    actual_score = _cox_reid_score_batch(log_dispersion, counts, mu)
+    np.testing.assert_allclose(actual_score, expected_score, rtol=0.0, atol=1.0e-13)
+
+    expected_fit = [fit_cox_reid_offset(row, exposure) for row in counts]
+    actual_fit = fit_cox_reid_offset_batch(counts, exposure)
+    np.testing.assert_allclose(
+        [value.intercept for value in actual_fit],
+        [value.intercept for value in expected_fit],
+        rtol=0.0,
+        atol=1.0e-14,
+    )
+    np.testing.assert_array_equal(
+        np.isfinite([value.theta for value in actual_fit]),
+        np.isfinite([value.theta for value in expected_fit]),
+    )
+    finite = np.isfinite([value.theta for value in expected_fit])
+    np.testing.assert_allclose(
+        np.log10([value.theta for value in actual_fit])[finite],
+        np.log10([value.theta for value in expected_fit])[finite],
+        rtol=0.0,
+        atol=2.0e-11,
+    )
 
 
 def test_local_median_trend_matches_external_golden_values() -> None:

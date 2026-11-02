@@ -219,53 +219,176 @@ def offset_intercept(
 
 
 def _cox_reid_score(log_dispersion: float, y: np.ndarray, mu: np.ndarray) -> float:
-    dispersion = float(np.exp(log_dispersion))
+    return float(
+        _cox_reid_score_batch(
+            np.asarray([log_dispersion]),
+            np.asarray(y, dtype=np.float64)[None, :],
+            np.asarray(mu, dtype=np.float64)[None, :],
+        )[0]
+    )
+
+
+def _cox_reid_score_batch(
+    log_dispersion: np.ndarray, y: np.ndarray, mu: np.ndarray
+) -> np.ndarray:
+    """Evaluate independent Cox--Reid scores in one float64 gene block."""
+    dispersion = np.exp(np.asarray(log_dispersion, dtype=np.float64))
     inverse_dispersion = 1.0 / dispersion
-    scaled_mu = mu * dispersion
+    scaled_mu = mu * dispersion[:, None]
 
     likelihood_term = np.empty_like(scaled_mu)
     tiny = scaled_mu < 1.0e-10
     small = (scaled_mu >= 1.0e-10) & (scaled_mu < 1.0e-4)
     regular = ~(tiny | small)
     likelihood_term[tiny] = scaled_mu[tiny] ** 2 * (1.0 / (1.0 + scaled_mu[tiny]) - 0.5)
+    inverse = np.broadcast_to(inverse_dispersion[:, None], mu.shape)
     suggestion = np.log(1.0 + scaled_mu[small]) - mu[small] / (
-        mu[small] + inverse_dispersion
+        mu[small] + inverse[small]
     )
     upper = scaled_mu[small] ** 2 / (1.0 + scaled_mu[small])
     lower = scaled_mu[small] ** 2 * (1.0 / (1.0 + scaled_mu[small]) - 0.5)
     likelihood_term[small] = np.clip(suggestion, lower, upper)
     likelihood_term[regular] = np.log(1.0 + scaled_mu[regular]) - mu[regular] / (
-        mu[regular] + inverse_dispersion
+        mu[regular] + inverse[regular]
     )
     likelihood_score = inverse_dispersion * np.sum(
-        likelihood_term + y / (mu + inverse_dispersion), dtype=np.float64
+        likelihood_term + y / (mu + inverse_dispersion[:, None]), axis=1
     )
 
-    count_sum = float(np.sum(y))
-    correction = 0.0
-    if inverse_dispersion > 1.0e5:
-        correction = float(np.sum(y * (y - 1.0))) / (2.0 * inverse_dispersion)
-    if float(np.max(y)) * 1.0e6 < inverse_dispersion:
-        digamma_score = count_sum - correction
-    else:
-        digamma_score = float(
-            np.sum(
-                (digamma(y + inverse_dispersion) - digamma(inverse_dispersion))
-                * inverse_dispersion,
-                dtype=np.float64,
+    count_sum = np.sum(y, axis=1, dtype=np.float64)
+    correction = np.zeros(y.shape[0], dtype=np.float64)
+    corrected = inverse_dispersion > 1.0e5
+    correction[corrected] = np.sum(
+        y[corrected] * (y[corrected] - 1.0), axis=1, dtype=np.float64
+    ) / (2.0 * inverse_dispersion[corrected])
+    asymptotic = np.max(y, axis=1) * 1.0e6 < inverse_dispersion
+    digamma_score = count_sum - correction
+    exact = ~asymptotic
+    if np.any(exact):
+        exact_score = np.sum(
+            (
+                digamma(y[exact] + inverse_dispersion[exact, None])
+                - digamma(inverse_dispersion[exact, None])
             )
+            * inverse_dispersion[exact, None],
+            axis=1,
+            dtype=np.float64,
         )
-        digamma_score = min(digamma_score, count_sum - correction)
+        digamma_score[exact] = np.minimum(
+            exact_score, count_sum[exact] - correction[exact]
+        )
 
-    weights = mu / (1.0 + dispersion * mu)
+    weights = mu / (1.0 + dispersion[:, None] * mu)
     adjustment = (
         0.5
         * dispersion
         * _COX_REID_CORRECTION
-        * float(np.dot(weights, weights))
-        / (float(np.sum(weights)) + 1.0e-6)
+        * np.sum(weights * weights, axis=1, dtype=np.float64)
+        / (np.sum(weights, axis=1, dtype=np.float64) + 1.0e-6)
     )
-    return float(likelihood_score - digamma_score + adjustment)
+    return likelihood_score - digamma_score + adjustment
+
+
+def fit_cox_reid_offset_batch(y: np.ndarray, exposure: np.ndarray) -> list[GeneFit]:
+    """Fit a dense gene block with batched safeguarded dispersion roots."""
+    y = np.asarray(y, dtype=np.float64)
+    if y.ndim != 2 or y.shape[1] != exposure.size:
+        raise ValueError("batched counts must be genes by exposure-sized cells")
+    means = np.mean(y, axis=1, dtype=np.float64)
+    if np.any(means == 0.0):
+        raise ValueError("batched Cox-Reid rows must contain at least one count")
+    variances = np.var(y, axis=1, ddof=1, dtype=np.float64)
+    initial_dispersion = np.maximum(
+        (variances - means / float(np.mean(exposure))) / means**2, 0.0
+    )
+    preliminary = [
+        offset_intercept(row, exposure, float(dispersion))
+        for row, dispersion in zip(y, initial_dispersion, strict=True)
+    ]
+    intercept = np.asarray([value[0] for value in preliminary])
+    intercept_iterations = np.asarray([value[1] for value in preliminary])
+    mu = np.exp(intercept[:, None]) * exposure[None, :]
+
+    lower = np.full(y.shape[0], np.log(_DISPERSION_FLOOR), dtype=np.float64)
+    lower_score = _cox_reid_score_batch(lower, y, mu)
+    poisson = lower_score < 0.0
+    upper_dispersion = np.minimum(
+        np.maximum(initial_dispersion, _DISPERSION_FLOOR * 4.0),
+        _DISPERSION_CEILING,
+    )
+    upper_score = _cox_reid_score_batch(np.log(upper_dispersion), y, mu)
+    expansion_iterations = np.zeros(y.shape[0], dtype=np.int64)
+    expanding = (
+        (~poisson) & (upper_score > 0.0) & (upper_dispersion < _DISPERSION_CEILING)
+    )
+    while np.any(expanding):
+        upper_dispersion[expanding] = np.minimum(
+            upper_dispersion[expanding] * 4.0, _DISPERSION_CEILING
+        )
+        index = np.flatnonzero(expanding)
+        upper_score[index] = _cox_reid_score_batch(
+            np.log(upper_dispersion[index]), y[index], mu[index]
+        )
+        expansion_iterations[index] += 1
+        expanding = (
+            (~poisson) & (upper_score > 0.0) & (upper_dispersion < _DISPERSION_CEILING)
+        )
+
+    ceiling = (~poisson) & (upper_score > 0.0)
+    bracketed = ~(poisson | ceiling)
+    upper = np.log(upper_dispersion)
+    root_iterations = np.zeros(y.shape[0], dtype=np.int64)
+    for _ in range(48):
+        index = np.flatnonzero(bracketed)
+        if index.size == 0:
+            break
+        midpoint = 0.5 * (lower[index] + upper[index])
+        score = _cox_reid_score_batch(midpoint, y[index], mu[index])
+        positive = score > 0.0
+        lower[index[positive]] = midpoint[positive]
+        upper[index[~positive]] = midpoint[~positive]
+        root_iterations[index] += 1
+
+    dispersion = np.exp(0.5 * (lower + upper))
+    dispersion[poisson] = 0.0
+    dispersion[ceiling] = _DISPERSION_CEILING
+    theta = np.divide(
+        1.0,
+        dispersion,
+        out=np.full_like(dispersion, np.inf),
+        where=dispersion != 0.0,
+    )
+    output: list[GeneFit] = []
+    log_exposure = np.log(exposure)
+    for index in range(y.shape[0]):
+        if np.isfinite(theta[index]):
+            objective, _ = _negative_log_likelihood_and_gradient(
+                np.asarray([intercept[index], np.log(theta[index])]),
+                y[index],
+                log_exposure,
+            )
+        else:
+            objective = float(
+                np.sum(
+                    mu[index] - y[index] * np.log(mu[index]) + gammaln(y[index] + 1.0),
+                    dtype=np.float64,
+                )
+            )
+        output.append(
+            GeneFit(
+                intercept=float(intercept[index]),
+                theta=float(theta[index]),
+                converged=True,
+                objective=float(objective),
+                iterations=int(
+                    intercept_iterations[index]
+                    + expansion_iterations[index]
+                    + root_iterations[index]
+                ),
+                message="batched Cox-Reid adjusted dispersion fit",
+            )
+        )
+    return output
 
 
 def fit_cox_reid_offset(

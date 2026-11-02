@@ -52,6 +52,7 @@ def _worker(
     *,
     fit_method: str,
     cox_reid_gene_bin_size: int | None,
+    cox_reid_batch_size: int | None,
     dispersion_regularization: str,
     regularization_method: str,
     regularization_support: str,
@@ -88,6 +89,7 @@ def _worker(
             n_cells=None,
             fit_method=fit_method,
             cox_reid_gene_bin_size=cox_reid_gene_bin_size,
+            cox_reid_batch_size=cox_reid_batch_size,
             dispersion_regularization=dispersion_regularization,
             regularization_method=regularization_method,
             regularization_support=regularization_support,
@@ -180,6 +182,7 @@ def main() -> None:
         "--fit-method", choices=("nb_mle", "cox_reid"), default="nb_mle"
     )
     parser.add_argument("--cox-reid-gene-bin-size", type=int)
+    parser.add_argument("--cox-reid-batch-size", type=int)
     parser.add_argument(
         "--dispersion-regularization",
         choices=("native", "sct_v2"),
@@ -212,6 +215,7 @@ def main() -> None:
                     args.input_format,
                     fit_method=args.fit_method,
                     cox_reid_gene_bin_size=args.cox_reid_gene_bin_size,
+                    cox_reid_batch_size=args.cox_reid_batch_size,
                     dispersion_regularization=args.dispersion_regularization,
                     regularization_method=args.regularization_method,
                     regularization_support=args.regularization_support,
@@ -253,6 +257,8 @@ def main() -> None:
     ]
     if args.cox_reid_gene_bin_size is not None:
         command.extend(["--cox-reid-gene-bin-size", str(args.cox_reid_gene_bin_size)])
+    if args.cox_reid_batch_size is not None:
+        command.extend(["--cox-reid-batch-size", str(args.cox_reid_batch_size)])
     if args.trace_python_allocations:
         command.append("--trace-python-allocations")
     for index in range(args.warmups + args.repeats):
@@ -286,6 +292,7 @@ def main() -> None:
         "model": {
             "fit_method": args.fit_method,
             "cox_reid_gene_bin_size": args.cox_reid_gene_bin_size,
+            "cox_reid_batch_size": args.cox_reid_batch_size,
             "dispersion_regularization": args.dispersion_regularization,
             "regularization_method": args.regularization_method,
             "regularization_support": args.regularization_support,
