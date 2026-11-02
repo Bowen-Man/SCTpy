@@ -75,3 +75,33 @@ python -m benchmarks.compare_correctness --fixture benchmark-results/large/fixtu
 
 The R and Level-B commands intentionally require separately installed external oracles.
 
+## Final-parameter residual isolation
+
+The residual stage can be tested independently of selection, fitting, and
+regularization by injecting Level A's final intercept and theta into the native
+residual core. This is a diagnostic benchmark only: the R runtime and exported
+arrays remain external and are never package or CI dependencies.
+
+On the larger fixture, the native residual matrix agrees with the R oracle at
+double-precision scale:
+
+| Quantity | RMSE | Max abs. |
+|---|---:|---:|
+| clipped Pearson residual | 2.25e-14 | 3.43e-13 |
+| residual mean | 1.96e-14 | 8.17e-14 |
+| residual variance | 2.06e-14 | 9.79e-14 |
+
+The complete HVG order is identical. This isolates the existing end-to-end
+residual RMSE of 0.014760 to upstream parameter estimation or regularization,
+not the residual formula, variance floor, clipping, or ranking implementation.
+The diagnostic gate requires RMSE `<= 1e-12`, maximum absolute error
+`<= 1e-10`, and an identical complete HVG order.
+
+```bash
+python -m benchmarks.diagnose_residuals \
+  --fixture benchmark-results/large/fixture.npz \
+  --r-oracle benchmark-results/large/r-oracle \
+  --output benchmark-results/large/residual-reinjection.json \
+  --enforce
+```
+
