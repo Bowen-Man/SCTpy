@@ -62,6 +62,7 @@ def regularization_reinjection_report(
         raw_intercept=raw_intercept,
         raw_theta=raw_theta,
         training_mask=training_mask,
+        outlier_evaluation_mask=prediction_mask & ~np.isnan(raw_theta),
         prediction_mask=prediction_mask,
         bandwidth_adjust=3.0,
         outlier_mad_threshold=10.0,

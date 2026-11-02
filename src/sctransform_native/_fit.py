@@ -4,10 +4,15 @@ from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import brentq, minimize
 from scipy.special import digamma, gammaln
 
+FitMethod = Literal["nb_mle", "cox_reid"]
 ThetaPostprocess = Literal["none", "moment_ratio"]
+
+_COX_REID_CORRECTION = 0.99
+_DISPERSION_FLOOR = 1.0e-8
+_DISPERSION_CEILING = 1.0e16
 
 
 @dataclass(frozen=True)
@@ -136,3 +141,192 @@ def fit_nb_offset(
         iterations=int(result.nit),
         message=str(result.message),
     )
+
+
+def offset_intercept(
+    y: np.ndarray, exposure: np.ndarray, dispersion: float
+) -> tuple[float, int]:
+    """Fit one offset intercept for a fixed NB2 dispersion."""
+    if float(np.sum(y)) == 0.0:
+        return -np.inf, 0
+    if dispersion == 0.0:
+        return poisson_offset_intercept(y, exposure), 0
+
+    center = poisson_offset_intercept(y, exposure)
+
+    def score(intercept: float) -> float:
+        mu = np.exp(intercept) * exposure
+        return float(np.sum((y - mu) / (1.0 + dispersion * mu)))
+
+    root, result = brentq(
+        score,
+        center - 30.0,
+        center + 30.0,
+        xtol=1.0e-12,
+        rtol=1.0e-14,
+        full_output=True,
+    )
+    return float(root), int(result.iterations)
+
+
+def _cox_reid_score(log_dispersion: float, y: np.ndarray, mu: np.ndarray) -> float:
+    dispersion = float(np.exp(log_dispersion))
+    inverse_dispersion = 1.0 / dispersion
+    scaled_mu = mu * dispersion
+
+    likelihood_term = np.empty_like(scaled_mu)
+    tiny = scaled_mu < 1.0e-10
+    small = (scaled_mu >= 1.0e-10) & (scaled_mu < 1.0e-4)
+    regular = ~(tiny | small)
+    likelihood_term[tiny] = scaled_mu[tiny] ** 2 * (1.0 / (1.0 + scaled_mu[tiny]) - 0.5)
+    suggestion = np.log(1.0 + scaled_mu[small]) - mu[small] / (
+        mu[small] + inverse_dispersion
+    )
+    upper = scaled_mu[small] ** 2 / (1.0 + scaled_mu[small])
+    lower = scaled_mu[small] ** 2 * (1.0 / (1.0 + scaled_mu[small]) - 0.5)
+    likelihood_term[small] = np.clip(suggestion, lower, upper)
+    likelihood_term[regular] = np.log(1.0 + scaled_mu[regular]) - mu[regular] / (
+        mu[regular] + inverse_dispersion
+    )
+    likelihood_score = inverse_dispersion * np.sum(
+        likelihood_term + y / (mu + inverse_dispersion), dtype=np.float64
+    )
+
+    count_sum = float(np.sum(y))
+    correction = 0.0
+    if inverse_dispersion > 1.0e5:
+        correction = float(np.sum(y * (y - 1.0))) / (2.0 * inverse_dispersion)
+    if float(np.max(y)) * 1.0e6 < inverse_dispersion:
+        digamma_score = count_sum - correction
+    else:
+        digamma_score = float(
+            np.sum(
+                (digamma(y + inverse_dispersion) - digamma(inverse_dispersion))
+                * inverse_dispersion,
+                dtype=np.float64,
+            )
+        )
+        digamma_score = min(digamma_score, count_sum - correction)
+
+    weights = mu / (1.0 + dispersion * mu)
+    adjustment = (
+        0.5
+        * dispersion
+        * _COX_REID_CORRECTION
+        * float(np.dot(weights, weights))
+        / (float(np.sum(weights)) + 1.0e-6)
+    )
+    return float(likelihood_score - digamma_score + adjustment)
+
+
+def fit_cox_reid_offset(y: np.ndarray, exposure: np.ndarray) -> GeneFit:
+    """Estimate an offset NB2 model with Cox--Reid adjusted dispersion."""
+    mean = float(np.mean(y))
+    if mean == 0.0:
+        return GeneFit(
+            intercept=-np.inf,
+            theta=np.inf,
+            converged=True,
+            objective=0.0,
+            iterations=0,
+            message="all-zero offset fit",
+        )
+    variance = float(np.var(y, ddof=1))
+    initial_dispersion = max(
+        (variance - mean / float(np.mean(exposure))) / mean**2,
+        0.0,
+    )
+    preliminary_intercept, beta_iterations = offset_intercept(
+        y, exposure, initial_dispersion
+    )
+    mu = np.exp(preliminary_intercept) * exposure
+    lower = float(np.log(_DISPERSION_FLOOR))
+    lower_score = _cox_reid_score(lower, y, mu)
+    dispersion_iterations = 0
+    if lower_score < 0.0:
+        dispersion = 0.0
+    else:
+        upper_dispersion = min(
+            max(initial_dispersion, _DISPERSION_FLOOR * 4.0),
+            _DISPERSION_CEILING,
+        )
+        upper_score = _cox_reid_score(np.log(upper_dispersion), y, mu)
+        while upper_score > 0.0 and upper_dispersion < _DISPERSION_CEILING:
+            upper_dispersion = min(upper_dispersion * 4.0, _DISPERSION_CEILING)
+            upper_score = _cox_reid_score(np.log(upper_dispersion), y, mu)
+            dispersion_iterations += 1
+        if upper_score > 0.0:
+            dispersion = _DISPERSION_CEILING
+        else:
+            root, result = brentq(
+                _cox_reid_score,
+                lower,
+                np.log(upper_dispersion),
+                args=(y, mu),
+                xtol=1.0e-10,
+                rtol=1.0e-14,
+                full_output=True,
+            )
+            dispersion = float(np.exp(root))
+            dispersion_iterations += int(result.iterations)
+
+    theta = np.inf if dispersion == 0.0 else 1.0 / dispersion
+    if np.isfinite(theta):
+        objective, _ = _negative_log_likelihood_and_gradient(
+            np.asarray([preliminary_intercept, np.log(theta)]),
+            y,
+            np.log(exposure),
+        )
+    else:
+        objective = float(
+            np.sum(mu - y * np.log(mu) + gammaln(y + 1.0), dtype=np.float64)
+        )
+    return GeneFit(
+        intercept=preliminary_intercept,
+        theta=float(theta),
+        converged=True,
+        objective=objective,
+        iterations=beta_iterations + dispersion_iterations,
+        message="Cox-Reid adjusted dispersion fit",
+    )
+
+
+def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
+    order = np.argsort(values, kind="stable")
+    sorted_weights = weights[order]
+    index = np.searchsorted(
+        np.cumsum(sorted_weights), np.sum(sorted_weights) / 2.0, side="left"
+    )
+    return float(values[order[index]])
+
+
+def local_median_dispersion_trend(
+    abundance: np.ndarray,
+    dispersion: np.ndarray,
+    *,
+    points: float | None = None,
+) -> np.ndarray:
+    """Fit the abundance-local weighted-median dispersion trend."""
+    size = abundance.size
+    if size == 0:
+        return np.empty(0, dtype=np.float64)
+    points = max(100.0, 0.1 * size) if points is None else points
+    points = min(size, max(1.0, points))
+    half = int(np.floor(points / 2.0))
+    order = np.argsort(abundance, kind="stable")
+    sorted_dispersion = dispersion[order]
+    trend = np.empty(size, dtype=np.float64)
+    if size - half <= half:
+        weights = np.exp(-0.5 * np.linspace(-3.0, 3.0, size) ** 2)
+        trend.fill(_weighted_median(sorted_dispersion, weights))
+    else:
+        weights = np.exp(-0.5 * np.linspace(-3.0, 3.0, 2 * half + 1) ** 2)
+        for center in range(half, size - half):
+            trend[center] = _weighted_median(
+                sorted_dispersion[center - half : center + half + 1], weights
+            )
+        trend[:half] = trend[half]
+        trend[size - half :] = trend[size - half - 1]
+    output = np.empty(size, dtype=np.float64)
+    output[order] = trend
+    return output

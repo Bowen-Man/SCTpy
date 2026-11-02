@@ -55,6 +55,11 @@ indices before fitting, and records the algorithm name. Pass a previously serial
 manifest to replay exactly the same cells and genes. The alpha's uniform selection is an
 explicit known difference from the reference density-dependent gene selection.
 
+Raw fitting is explicit. `fit_method="nb_mle"` remains the alpha default. The optional
+`fit_method="cox_reid"` uses per-gene Cox--Reid adjusted dispersion estimates followed by
+an abundance-local weighted-median dispersion trend for the intercept refit. It is native
+NumPy/SciPy code and does not import `glmGamPoi` or R.
+
 Dispersion regularization is also explicit. The alpha default remains `native`; use
 `SCTConfig(dispersion_regularization="sct_v2")` to smooth
 `log10(1 + geometric_mean / theta)` and apply its matching inverse transform. This switch
@@ -68,9 +73,11 @@ therefore uses:
 
 ```python
 SCTConfig(
+    fit_method="cox_reid",
     dispersion_regularization="sct_v2",
     regularization_method="r_stats",
     regularization_support="clamp",
+    theta_postprocess="moment_ratio",
 )
 ```
 
@@ -81,13 +88,14 @@ to `"clamp"` to evaluate genes outside the training abundance range at the neare
 training boundary. Device placement and matrix orientation are unaffected by this scalar
 coordinate policy.
 
-Theta postprocessing is disabled by default. The experimental
+Theta postprocessing is disabled by default. The explicit
 `theta_postprocess="moment_ratio"` policy compares the method-of-moments theta
-with each converged native fit, using the recorded
+with each available raw fit, using the recorded
 `theta_moment_ratio_threshold` (default `1e-3`). Flagged raw theta values become
 infinite, are exposed through `result.theta_postprocessed`, and are excluded
-from smoother training while still receiving regularized predictions. This is
-a native research policy, not a claim of estimator-level R compatibility.
+from smoother training while still receiving regularized predictions. Raw theta values
+that are already infinite are also excluded and counted as parameter outliers, but are
+not labelled as newly postprocessed.
 
 ## Deliberately unsupported
 
@@ -96,9 +104,11 @@ a native research policy, not a claim of estimator-level R compatibility.
 
 ## Numerical implementation
 
-Per-gene NB2 intercept and theta are fitted by independently derived maximum likelihood
-with analytic gradients and SciPy L-BFGS-B. Both regularization methods are NumPy/SciPy
-code and keep their pair-distance, smoothing, and outlier temporaries one-dimensional.
+The default per-gene NB2 intercept and theta are fitted by independently derived maximum
+likelihood with analytic gradients and SciPy L-BFGS-B. The optional Cox--Reid path uses
+scalar root solves and a one-dimensional local-median trend. Both regularization methods
+are NumPy/SciPy code and keep pair-distance, smoothing, and outlier temporaries
+one-dimensional.
 The native derivative-functional sums are block bounded. The `r_stats` path uses at most
 1000 distance bins for larger training sets and truncates the normal kernel at four
 standard deviations. The package contains no R-math layer and does not claim bit identity.

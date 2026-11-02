@@ -181,13 +181,12 @@ when `variance > mean`, and flags a native fit when
 `theta_mm / theta_native < 1e-3`. This selects 155 genes, 149 of which are in
 the 150-gene Level A Inf set (Jaccard `0.955128`). The high overlap confirms
 that a moment-to-fit ratio explains most of the branch difference. This broad
-diagnostic includes every available raw fit; the applied policy below is more
-conservative and is limited to fits marked converged.
+diagnostic includes every available raw fit.
 
-The same hypothesis is available as an experimental, non-default core policy
-for controlled A/B runs. It is limited to converged non-Poisson fits, exposes a
-separate `theta_postprocessed` mask, and excludes flagged genes from smoother
-training without reclassifying them as Poisson genes.
+The same rule is available as a non-default core policy for controlled A/B runs. It
+exposes a separate `theta_postprocessed` mask and excludes flagged genes from smoother
+training without reclassifying them as Poisson genes. Raw fits that were already infinite
+are excluded separately.
 
 ### Combined dispersion/theta A/B
 
@@ -206,11 +205,8 @@ default with that experimental combination on the same larger fixture:
 | Top-2000 HVG Jaccard | 0.986097 | 0.997004 |
 | Top-3000 HVG Jaccard | 0.998668 | 1.000000 |
 
-The applied converged-only mask contains 149 genes and overlaps 143 of Level
-A's 150 raw-theta Inf genes (Jaccard `0.916667`). In this configuration the
-combined parameter-outlier mask contains 150 genes, also overlapping 143 Level
-A genes (Jaccard `0.910828`). The result supports the combined hypothesis on
-this fixture, but is not enough evidence to change public defaults. The small
+The initial checkpoint used a converged-only mask and is retained as historical A/B
+evidence. The exact Cox--Reid path below supersedes its mask comparison. The small
 fixture shows the same direction: regularized log10(theta) RMSE decreases from
 `0.061539` to `0.006869`, residual RMSE from `0.025998` to `0.005671`, and
 residual-variance RMSE from `0.052142` to `0.006621`.
@@ -285,6 +281,48 @@ python -m benchmarks.diagnose_regularization \
   --fixture benchmark-results/large/fixture.npz \
   --r-oracle benchmark-results/large/r-oracle \
   --output benchmark-results/large/regularization-reinjection.json \
+  --enforce
+```
+
+## Cox--Reid v2 fit checkpoint
+
+The optional `fit_method="cox_reid"` implements the fixed-offset estimator in three
+explicit stages: preliminary offset-intercept fitting, per-gene Cox--Reid adjusted raw
+dispersion, and an abundance-local weighted-median dispersion trend used only for the
+intercept refit. External golden tests cover raw theta, zero dispersion, the trend, and
+final intercepts. The complete v2 comparison combines this fit with `sct_v2`, `r_stats`,
+`clamp`, and `moment_ratio`; none of these settings changes the alpha defaults.
+
+| Quantity | small fixture | larger fixture |
+|---|---:|---:|
+| raw intercept RMSE | 0.000362 | 0.000424 |
+| raw log10(theta) RMSE | 6.20e-7 | 2.36e-6 |
+| regularized intercept RMSE | 4.05e-5 | 4.16e-5 |
+| regularized log10(theta) RMSE | 1.44e-8 | 1.55e-8 |
+| clipped residual RMSE | 8.52e-5 | 6.86e-5 |
+| residual variance RMSE | 5.97e-5 | 4.67e-5 |
+| raw finite/Inf mask | exact | exact |
+| parameter-outlier mask | exact | exact |
+| HVG Top 1000/2000/3000 | n/a | exact / exact / exact |
+
+Level A and Level B remain mutually identical at the reported precision. The largest
+remaining discrepancy is the raw intercept, where small ordering/stopping differences in
+the preliminary fit feed the local-median trend. Parameter smoothing reduces that error by
+roughly an order of magnitude, and all pre-registered gates pass without changing their
+tolerances.
+
+```bash
+python -m benchmarks.compare_correctness \
+  --fixture benchmark-results/large/fixture.npz \
+  --manifest benchmark-results/large/fixture.selection.json \
+  --r-oracle benchmark-results/large/r-oracle \
+  --reference benchmark-results/large/reference-v0.4.0.npz \
+  --fit-method cox_reid \
+  --dispersion-regularization sct_v2 \
+  --regularization-method r_stats \
+  --regularization-support clamp \
+  --theta-postprocess moment_ratio \
+  --output benchmark-results/large/correctness-cox-reid.json \
   --enforce
 ```
 

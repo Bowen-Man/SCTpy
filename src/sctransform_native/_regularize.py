@@ -412,6 +412,7 @@ def regularize_parameters(
     raw_intercept: np.ndarray,
     raw_theta: np.ndarray,
     training_mask: np.ndarray,
+    outlier_evaluation_mask: np.ndarray,
     prediction_mask: np.ndarray,
     bandwidth_adjust: float,
     outlier_mad_threshold: float,
@@ -447,11 +448,34 @@ def regularize_parameters(
     outlier = np.zeros(raw_intercept.shape, dtype=bool)
     if train_indices.size >= 4:
         if regularization_method == "r_stats":
-            local_outlier = r_stats_binned_outliers(
-                x_train, intercept_train, threshold=outlier_mad_threshold
-            ) | r_stats_binned_outliers(
-                x_train, od_train, threshold=outlier_mad_threshold
+            evaluation_indices = np.flatnonzero(outlier_evaluation_mask)
+            evaluation_x = np.log10(
+                np.maximum(geometric_mean[evaluation_indices], np.finfo(float).tiny)
             )
+            evaluation_intercept = raw_intercept[evaluation_indices]
+            evaluation_od = _dispersion_target(
+                gene_mean[evaluation_indices],
+                geometric_mean[evaluation_indices],
+                raw_theta[evaluation_indices],
+                mode=dispersion_regularization,
+            )
+            finite = (
+                np.isfinite(evaluation_x)
+                & np.isfinite(evaluation_intercept)
+                & np.isfinite(evaluation_od)
+            )
+            evaluation_indices = evaluation_indices[finite]
+            evaluation_x = evaluation_x[finite]
+            evaluation_intercept = evaluation_intercept[finite]
+            evaluation_od = evaluation_od[finite]
+            local_outlier = r_stats_binned_outliers(
+                evaluation_x,
+                evaluation_intercept,
+                threshold=outlier_mad_threshold,
+            ) | r_stats_binned_outliers(
+                evaluation_x, evaluation_od, threshold=outlier_mad_threshold
+            )
+            outlier[evaluation_indices[local_outlier]] = True
         else:
             initial_intercept = smoother(
                 x_train, intercept_train, x_train, bandwidth=bandwidth
@@ -460,11 +484,12 @@ def regularize_parameters(
             local_outlier = _mad_outliers(
                 intercept_train - initial_intercept, threshold=outlier_mad_threshold
             ) | _mad_outliers(od_train - initial_od, threshold=outlier_mad_threshold)
-        if np.count_nonzero(~local_outlier) >= 3:
             outlier[train_indices[local_outlier]] = True
-            x_train = x_train[~local_outlier]
-            intercept_train = intercept_train[~local_outlier]
-            od_train = od_train[~local_outlier]
+        retained = ~outlier[train_indices]
+        if np.count_nonzero(retained) >= 3:
+            x_train = x_train[retained]
+            intercept_train = intercept_train[retained]
+            od_train = od_train[retained]
             bandwidth = bandwidth_selector(x_train, adjust=bandwidth_adjust)
 
     x_predict = np.log10(
