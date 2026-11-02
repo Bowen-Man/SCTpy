@@ -3,7 +3,7 @@
 Audit date: **2026-11-03**. Pre-GPU audit baseline:
 `00dedea17ed9f575b922bd706b369c37b4e2482f` on a clean `main` branch. Its GitHub Actions
 run completed successfully on Windows and Linux with Python 3.10--3.13. The pre-GPU
-validation work adds pinned macOS 15 coverage on Python 3.11/3.13 and a frozen
+validation work adds pinned macOS 15 x64 coverage on Python 3.11/3.13 and a frozen
 small-fixture compatibility gate to that matrix.
 
 ## Package structure and dependencies

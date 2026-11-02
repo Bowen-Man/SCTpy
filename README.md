@@ -67,8 +67,8 @@ python -m pytest
 ```
 
 The package supports Python 3.10 through 3.13. CI exercises every supported Python on
-Windows and Linux, plus Python 3.11 and 3.13 on the pinned macOS 15 image. GPU packages
-are never required for CPU installation.
+Windows and Linux, plus Python 3.11 and 3.13 on the pinned macOS 15 x64 image. GPU
+packages are never required for CPU installation.
 
 AnnData support is an optional, non-mutating adapter:
 
