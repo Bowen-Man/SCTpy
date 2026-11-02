@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Bowen-Man/sctransform-native/schemas/correctness-report-v1.schema.json",
+  "title": "sctransform-native differential correctness report v1",
+  "type": "object",
+  "required": ["schema_version", "native_gate_passed", "stages"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "native_gate_passed": {"type": "boolean"},
+    "stages": {
+      "type": "object",
+      "required": [
+        "input",
+        "selection",
+        "raw_fitting",
+        "regularization",
+        "residual",
+        "hvg"
+      ],
+      "properties": {
+        "input": {"$ref": "#/$defs/inputStage"},
+        "selection": {"$ref": "#/$defs/selectionStage"},
+        "raw_fitting": {"$ref": "#/$defs/rawFittingStage"},
+        "regularization": {"$ref": "#/$defs/regularizationStage"},
+        "residual": {"$ref": "#/$defs/residualStage"},
+        "hvg": {"$ref": "#/$defs/hvgStage"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "nonnegativeInteger": {"type": "integer", "minimum": 0},
+    "nullableNumber": {"type": ["number", "null"]},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "namedSet": {
+      "type": "object",
+      "required": [
+        "left_count",
+        "right_count",
+        "intersection",
+        "union",
+        "jaccard"
+      ],
+      "properties": {
+        "left_count": {"$ref": "#/$defs/nonnegativeInteger"},
+        "right_count": {"$ref": "#/$defs/nonnegativeInteger"},
+        "intersection": {"$ref": "#/$defs/nonnegativeInteger"},
+        "union": {"$ref": "#/$defs/nonnegativeInteger"},
+        "jaccard": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": true
+    },
+    "maskCounts": {
+      "type": "object",
+      "required": ["finite", "positive_infinity", "negative_infinity", "nan"],
+      "properties": {
+        "finite": {"$ref": "#/$defs/nonnegativeInteger"},
+        "positive_infinity": {"$ref": "#/$defs/nonnegativeInteger"},
+        "negative_infinity": {"$ref": "#/$defs/nonnegativeInteger"},
+        "nan": {"$ref": "#/$defs/nonnegativeInteger"}
+      },
+      "additionalProperties": false
+    },
+    "maskAgreement": {
+      "type": "object",
+      "required": ["left", "right", "mismatch_count", "exact"],
+      "properties": {
+        "left": {"$ref": "#/$defs/maskCounts"},
+        "right": {"$ref": "#/$defs/maskCounts"},
+        "mismatch_count": {"$ref": "#/$defs/nonnegativeInteger"},
+        "exact": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "relativeError": {
+      "type": "object",
+      "required": ["n", "mean", "median", "max"],
+      "properties": {
+        "n": {"$ref": "#/$defs/nonnegativeInteger"},
+        "mean": {"type": "number"},
+        "median": {"type": "number"},
+        "max": {"type": "number"}
+      },
+      "additionalProperties": true
+    },
+    "numericMetric": {
+      "type": "object",
+      "required": [
+        "n",
+        "mae",
+        "rmse",
+        "max_absolute_error",
+        "pearson",
+        "spearman",
+        "gate",
+        "mask_agreement"
+      ],
+      "properties": {
+        "n": {"$ref": "#/$defs/nonnegativeInteger"},
+        "mae": {"type": "number"},
+        "rmse": {"type": "number"},
+        "max_absolute_error": {"type": "number"},
+        "pearson": {"$ref": "#/$defs/nullableNumber"},
+        "spearman": {"$ref": "#/$defs/nullableNumber"},
+        "gate": {"type": "boolean"},
+        "mask_agreement": {"$ref": "#/$defs/maskAgreement"},
+        "relative_error": {"$ref": "#/$defs/relativeError"},
+        "top_absolute_error_genes": {"type": "array", "items": {"type": "object"}},
+        "top_gene_rmse": {"type": "array", "items": {"type": "object"}}
+      },
+      "additionalProperties": true
+    },
+    "inputStage": {
+      "type": "object",
+      "required": [
+        "shape_genes_by_cells",
+        "counts_sha256",
+        "fixture_gene_count",
+        "fixture_cell_count",
+        "oracle_cell_order_exact"
+      ],
+      "properties": {
+        "shape_genes_by_cells": {
+          "type": "array",
+          "prefixItems": [
+            {"type": "integer", "minimum": 1},
+            {"type": "integer", "minimum": 1}
+          ],
+          "items": false
+        },
+        "counts_sha256": {"$ref": "#/$defs/sha256"},
+        "fixture_gene_count": {"type": "integer", "minimum": 1},
+        "fixture_cell_count": {"type": "integer", "minimum": 1},
+        "oracle_cell_order_exact": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "selectionStage": {
+      "type": "object",
+      "required": [
+        "manifest_sha256",
+        "algorithm",
+        "selected_gene_count",
+        "selected_cell_count",
+        "raw_fit_gene_set",
+        "fit_cell_order_exact",
+        "fit_cell_oracle_status",
+        "cross_language_seed_comparison"
+      ],
+      "properties": {
+        "manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "algorithm": {"type": "string", "minLength": 1},
+        "selected_gene_count": {"$ref": "#/$defs/nonnegativeInteger"},
+        "selected_cell_count": {"type": "integer", "minimum": 2},
+        "raw_fit_gene_set": {"$ref": "#/$defs/namedSet"},
+        "fit_cell_order_exact": {"type": ["boolean", "null"]},
+        "fit_cell_oracle_status": {"enum": ["available", "not_exported"]},
+        "cross_language_seed_comparison": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "optimizerSummary": {
+      "type": "object",
+      "required": [
+        "fit_gene_count",
+        "converged_gene_count",
+        "status_counts",
+        "iterations"
+      ],
+      "properties": {
+        "fit_gene_count": {"$ref": "#/$defs/nonnegativeInteger"},
+        "converged_gene_count": {"$ref": "#/$defs/nonnegativeInteger"},
+        "status_counts": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/nonnegativeInteger"}
+        },
+        "iterations": {
+          "type": "object",
+          "required": ["median", "max"],
+          "properties": {
+            "median": {"$ref": "#/$defs/nullableNumber"},
+            "max": {"$ref": "#/$defs/nonnegativeInteger"}
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "rawFittingStage": {
+      "type": "object",
+      "required": [
+        "intercept",
+        "log10_theta",
+        "infinite_theta_genes",
+        "level_c_optimizer",
+        "level_a_optimizer_status"
+      ],
+      "properties": {
+        "intercept": {"$ref": "#/$defs/numericMetric"},
+        "log10_theta": {"$ref": "#/$defs/numericMetric"},
+        "infinite_theta_genes": {"$ref": "#/$defs/namedSet"},
+        "level_c_optimizer": {"$ref": "#/$defs/optimizerSummary"},
+        "level_a_optimizer_status": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": true
+    },
+    "regularizationStage": {
+      "type": "object",
+      "required": ["intercept", "log10_theta", "parameter_outliers"],
+      "properties": {
+        "intercept": {"$ref": "#/$defs/numericMetric"},
+        "log10_theta": {"$ref": "#/$defs/numericMetric"},
+        "parameter_outliers": {
+          "oneOf": [{"$ref": "#/$defs/namedSet"}, {"type": "null"}]
+        }
+      },
+      "additionalProperties": true
+    },
+    "residualStage": {
+      "type": "object",
+      "required": ["matrix", "mean", "variance"],
+      "properties": {
+        "matrix": {"$ref": "#/$defs/numericMetric"},
+        "mean": {"$ref": "#/$defs/numericMetric"},
+        "variance": {"$ref": "#/$defs/numericMetric"}
+      },
+      "additionalProperties": true
+    },
+    "hvgTopK": {
+      "type": "object",
+      "required": ["jaccard", "intersection", "gate"],
+      "properties": {
+        "jaccard": {"type": "number", "minimum": 0, "maximum": 1},
+        "intersection": {"$ref": "#/$defs/nonnegativeInteger"},
+        "gate": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "hvgStage": {
+      "type": "object",
+      "required": [
+        "complete_order_exact",
+        "complete_gene_set",
+        "complete_rank_spearman"
+      ],
+      "properties": {
+        "complete_order_exact": {"type": "boolean"},
+        "complete_gene_set": {"$ref": "#/$defs/namedSet"},
+        "complete_rank_spearman": {"$ref": "#/$defs/nullableNumber"},
+        "1000": {"$ref": "#/$defs/hvgTopK"},
+        "2000": {"$ref": "#/$defs/hvgTopK"},
+        "3000": {"$ref": "#/$defs/hvgTopK"}
+      },
+      "additionalProperties": true
+    }
+  }
+}

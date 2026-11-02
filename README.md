@@ -29,6 +29,8 @@ See:
 - [SCT v2 contract](docs/SCT_V2_SPEC.md)
 - [CPU alpha API](docs/CPU_API.md)
 - [correctness gate](docs/CORRECTNESS.md)
+- [stage-report contract](docs/REPORT_SCHEMA.md)
+- [real-data validation plan](docs/REAL_DATA_VALIDATION.md)
 - [benchmark and profiling report](docs/BENCHMARKS.md)
 - [GPU feasibility report](docs/GPU_FEASIBILITY.md)
 - [licensing rationale](docs/LICENSING.md)

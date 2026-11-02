@@ -22,6 +22,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
   "Operating System :: POSIX :: Linux",
   "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
@@ -32,6 +33,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
+  "jsonschema>=4.23",
   "pytest>=8",
 ]
 lint = [

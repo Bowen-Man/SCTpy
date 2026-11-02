@@ -25,6 +25,7 @@ from .correctness import (
     top_absolute_errors,
     top_row_rmse,
 )
+from .report_schema import validate_correctness_report
 
 THETA_MOMENT_RATIO_THRESHOLD = 1.0e-3
 
@@ -447,8 +448,9 @@ def main() -> None:
         report["level_c_vs_level_b"]
     )
     report["native_gate_passed"] = bool(gates and all(gates))
+    validate_correctness_report(report)
     write_json(args.output, report)
-    print(json.dumps(report, indent=2, sort_keys=True))
+    print(json.dumps(report, allow_nan=False, indent=2, sort_keys=True))
     if args.enforce and not report["native_gate_passed"]:
         raise SystemExit(1)
 
