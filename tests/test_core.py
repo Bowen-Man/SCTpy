@@ -64,6 +64,18 @@ def test_cpu_core_produces_complete_float64_result() -> None:
     assert result.highly_variable_genes(3) == tuple(
         genes[index] for index in result.hvg_order[:3]
     )
+    assert set(result.timing) == {
+        "input_validation",
+        "input_statistics",
+        "selection",
+        "fit",
+        "regularization",
+        "residuals_and_hvg",
+        "total",
+    }
+    assert result.timing["total"] >= sum(
+        value for key, value in result.timing.items() if key != "total"
+    )
 
 
 def test_sparse_dense_and_explicit_orientation_are_equivalent() -> None:

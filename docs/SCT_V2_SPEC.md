@@ -80,10 +80,12 @@ od_g = log10(m_g / theta_g)
 
 and independently smooths `beta_g0` and `od_g` as functions of `x_g`. Then
 `theta_fit_g = m_g / 10**od_fit_g`. The smoother, bandwidth, support checks, and outlier
-policy are configuration recorded in results. The initial implementation uses a documented
-Gaussian Nadaraya-Watson smoother and robust data-driven bandwidth; exact parity with
-`3 * bw.SJ` is a differential-testing target, not an assumed fact. **confirmed from
-official documentation; inferred/project decision**.
+policy are configuration recorded in results. The implementation uses a Gaussian
+Nadaraya-Watson smoother and an independent implementation of the published
+Sheather--Jones solve-the-equation selector, including diagonal terms, with the configured
+default adjustment of 3. The selector is derived from equations 12--13 of Sheather and
+Jones (1991), not from GPL source. **confirmed from paper and official documentation;
+project decision** for the numerical blocking and root solver.
 
 Poisson-like genes retain `theta=infinity` and the analytic intercept. Failed NB fits are
 never silently regularized; they are flagged and excluded from the smoothing training set.

@@ -47,6 +47,11 @@ explicit known difference from the reference density-dependent gene selection.
 
 Per-gene NB2 intercept and theta are fitted by independently derived maximum likelihood
 with analytic gradients and SciPy L-BFGS-B. Regularization uses a Gaussian
-Nadaraya-Watson smoother, robust bandwidth, and a recorded 10-MAD outlier rule. This is
-algorithmically motivated by the public method contract but does not reproduce R math or
-claim bit identity.
+Nadaraya-Watson smoother, the published Sheather--Jones solve-the-equation bandwidth
+selector (multiplied by the configured adjustment), and a recorded 10-MAD outlier rule.
+The derivative-functional sums are evaluated in NumPy blocks so their temporary memory is
+bounded. The smoother's Gaussian scale follows the public `ksmooth` convention: kernel
+quartiles are at `+/- 0.25 * bandwidth`, so its standard deviation is
+`bandwidth / 2.697959...`. These are algorithmic definitions from papers and public API
+contracts; the package does not contain an R-math compatibility layer or claim bit
+identity.
