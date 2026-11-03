@@ -80,7 +80,9 @@ def residual_reinjection_report(
         clip_range=(-clip_limit, clip_limit),
         standard_deviation_floor=nonzero_median / 5.0,
         block_size=256,
+        store_residuals=True,
     )
+    assert residuals is not None
 
     metrics: dict[str, dict[str, float | int | None | bool]] = {}
     for name, native_values, oracle_values in (

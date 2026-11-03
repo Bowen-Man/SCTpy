@@ -85,6 +85,11 @@ def test_unknown_theta_postprocess_is_rejected() -> None:
         SCTConfig(theta_postprocess="unknown")  # type: ignore[arg-type]
 
 
+def test_unknown_residual_output_is_rejected() -> None:
+    with pytest.raises(ValueError, match="residual_output"):
+        SCTConfig(residual_output="unknown")  # type: ignore[arg-type]
+
+
 def test_r_v2_preset_is_fixed_and_sampling_is_configurable() -> None:
     config = SCTConfig.r_v2(
         min_cells=7,

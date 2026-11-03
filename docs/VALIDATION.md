@@ -77,6 +77,12 @@ supplementary Python-only `tracemalloc` data. The fixed 3,200 x 240 validated pa
 `2.961 s` median compute time, `3.000 s` process CPU time, and `110.07 MiB` peak RSS on
 the recorded Windows machine. These are fixture/machine measurements, not general claims.
 
+On the same 3,200 x 240 fixture after adding streamed summaries, full and summary modes
+produced identical residual statistics and HVG ranks. Five measured runs gave median peak
+RSS `107.64 MiB` for full output and `103.41 MiB` for summary output; the retained dense
+residual is only `5.86 MiB` on this fixture, so larger matrices receive the material
+benefit. Median compute times were `3.156 s` and `3.177 s`. **measured on 2026-11-03**
+
 Minimal synthetic reproduction:
 
 ```bash

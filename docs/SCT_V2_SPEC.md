@@ -93,6 +93,11 @@ sample variance use all cells after clipping. HVGs are ordered by descending res
 variance, then original gene index. **confirmed from paper and official documentation**;
 the deterministic tie-break is a **project decision**.
 
+`residual_output="full"` retains the dense genes-by-cells residual matrix. The `summary`
+mode computes each bounded gene block once, updates residual mean/variance and HVG ranks,
+then releases it. Both modes use identical block arithmetic; summary mode never allocates
+the full residual matrix. **project decision; measured**
+
 ## Explicit exclusions
 
 Corrected UMI counts, multiple batches, additional/categorical covariates, v1 aliases,

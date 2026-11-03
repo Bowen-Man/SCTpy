@@ -14,6 +14,7 @@ comments, structure, and binaries are not copied or shipped.
 - reproducible cell/gene selection manifests;
 - v2 fixed-slope offset fitting, theta estimation, Poisson genes, regularization,
   Pearson residuals, clipping, residual variance, and HVG ranking;
+- block-streamed residual summaries and HVG ranking without retaining a dense matrix;
 - a non-mutating AnnData adapter for cells-by-genes CPU data;
 - float64 reference arithmetic.
 
@@ -44,8 +45,9 @@ hvg_2000 = result.highly_variable_genes(2000)
 
 `SCTConfig.r_v2()` selects the validated compatibility path. Plain `SCTConfig()` retains
 the native research defaults; mixed configurations are labelled `experimental`. Sparse
-input remains sparse during validation, selection, and reductions. Residuals are dense
-and computed in bounded gene blocks.
+input remains sparse during validation, selection, and reductions. Residuals are computed
+in bounded gene blocks. Set `residual_output="summary"` in the configuration to retain
+only residual mean, variance, and HVG ranks; `result.residuals` is then `None`.
 
 Install the optional AnnData adapter dependency with:
 
