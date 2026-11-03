@@ -9,8 +9,8 @@ persisted selection manifest:
   `b79041796e3f7ca3b33029adde5d7132eedd2430`, called through its public API;
 - **Level C:** this repository.
 
-Levels A and B are black-box execution-time oracles. They are not package, build, or CI
-dependencies. Generated reports and downloaded data remain under ignored
+Levels A and B are black-box oracles used only by explicit differential-validation jobs,
+not package or build dependencies. Generated reports and downloaded data remain under ignored
 `benchmark-results/`.
 
 ## Pre-registered gates
@@ -36,7 +36,8 @@ variance Spearman must be `>= 0.999999`, and HVG Top 100/500 Jaccard must equal 
 
 The committed 198 KiB R golden contains only factual numerical outputs for the synthetic
 small fixture, plus provenance. CI regenerates the counts, verifies their hash, runs the
-CPU path on CSR input, and requires exact branch masks and HVG order. Its tighter
+CPU path on CSR input, and requires exact branch masks and HVG order. The same gate
+also runs on CuPy when CUDA is available; otherwise that test explicitly skips. Its tighter
 cross-platform regression limits are:
 
 | Quantity | RMSE | Max absolute error |
@@ -77,15 +78,15 @@ v3.1, Chromium X* dataset (CC BY 4.0). The source file is 39,503,734 bytes with 
 verified, and never committed. The derived sparse-count SHA-256 is
 `d9c23eda8654b17fab1a3672df4961b53f2d9e63356dd631de567c76db570532`.
 
-With the oracle's ordered 2,000-gene/2,000-cell manifest, Level C matched 142 raw-infinite
-theta names, 159 outlier names, and all three HVG sets exactly. Residual RMSE was
-`1.77e-5`, residual-variance RMSE `2.20e-5`, and residual-variance Spearman
-`0.9999999952`. Selection order is part of the contract because reordering changes
-500-gene bin membership. **measured on 2026-11-03**
+The oracle's ordered manifest contains 2,000 genes and 2,000 cells. Selection order
+is part of the contract because reordering changes 500-gene bin membership.
 
 The subsequent corrected-count audit found two missing v2 details: the original-depth
 variance floor during reconstruction and the eligible-gene total in Poisson intercepts.
-After correction, all 51,465,000 eligible PBMC corrected counts matched Level A exactly.
+After correction, CPU and CuPy both matched all 51,465,000 eligible PBMC corrected
+counts exactly. CuPy versus R residual RMSE was `4.49e-9`, residual-variance RMSE
+`4.68e-8`, and regularized-intercept RMSE `5.07e-10`; HVG Top 1000/2000/3000 sets,
+raw finite/Inf theta and outlier masks were exact.
 The frozen Level B itself differs from Level A by up to 8 UMI on this dataset, exceeding
 the unchanged maximum-error gate of 2. The joint A/B gate therefore remains failed;
 this is not evidence for relaxing its thresholds. **measured on 2026-11-03**
@@ -100,7 +101,10 @@ require a new schema version.
 `run_baseline.py` performs one warm-up and five fresh-process runs, fixes common BLAS
 thread variables, samples RSS, and enforces time/memory budgets. `profile_stages.py`
 records stage time, shapes, dtype, bytes, `nnz`, lifetimes, RSS, cProfile output, and
-supplementary Python-only `tracemalloc` data. The fixed 3,200 x 240 validated path measured
+supplementary `tracemalloc` data, which does not represent all native/GPU allocations.
+Profiling samples RSS from a separate spawned process: the in-process sampler interfered
+with cProfile cumulative call accounting on the tested Python 3.13 environment.
+The fixed 3,200 x 240 validated path measured
 `2.961 s` median compute time, `3.000 s` process CPU time, and `110.07 MiB` peak RSS on
 the recorded Windows machine. These are fixture/machine measurements, not general claims.
 
@@ -119,16 +123,18 @@ For full residual output on the same fixture, float32 reduced the retained matri
 `3.214 s` compute time, versus `111.81 MiB` and `3.260 s` for float64. These are
 fixture/machine measurements, not a general speed claim. **measured on 2026-11-03**
 
-Minimal synthetic reproduction:
+Reproduction commands and pinned oracle versions live in the
+[synthetic oracle workflow](../.github/workflows/r-oracle-nightly.yml) and
+[public PBMC workflow](../.github/workflows/real-data-validation.yml). The latter keeps
+the joint gate enforced, including the recorded Level-B corrected-count discrepancy.
+Reports also expose `level_a_gate_passed` and `level_b_gate_passed` separately.
 
-```bash
-python -m benchmarks.generate_fixture --output benchmark-results/large/fixture.npz --genes 3200 --cells 240 --seed 20261102
-Rscript benchmarks/export_r_oracle.R benchmark-results/large/fixture benchmark-results/large/r-oracle
-python -m benchmarks.export_reference --fixture benchmark-results/large/fixture.npz --manifest benchmark-results/large/fixture.selection.json --output benchmark-results/large/reference-v0.4.0.npz
-python -m benchmarks.compare_correctness --fixture benchmark-results/large/fixture.npz --manifest benchmark-results/large/fixture.selection.json --r-oracle benchmark-results/large/r-oracle --reference benchmark-results/large/reference-v0.4.0.npz --output benchmark-results/large/correctness.json --enforce
-```
+The baseline, profiler and differential runners accept `--cox-reid-backend cupy` with
+the same model/manifest arguments. For warmed baseline calls use `--compute-warmups 1`;
+leave it at zero for fresh-process measurements. `--allocator rmm` selects a benchmark-owned
+pool. Profiling supports `--warmups 1`; its instrumented timings are not speed claims.
+Measured hybrid results are in [RAPIDS_INTEGRATION.md](RAPIDS_INTEGRATION.md).
 
-The scheduled oracle workflow and manually triggered real-data workflow preserve full
-commands and upload only compact diagnostics. Unit tests separately cover dense/CSR
+Oracle workflows upload only compact diagnostics. Unit tests separately cover dense/CSR
 parity, all-zero genes, counts above 32-bit range, extreme library sizes, CLI replay, and
 the versioned report schema.

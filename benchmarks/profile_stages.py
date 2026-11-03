@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import cProfile
 import json
+import multiprocessing
+import os
 import pstats
-import threading
 import time
 import tracemalloc
 from datetime import datetime, timezone
@@ -15,16 +16,17 @@ import numpy as np
 import psutil
 from scipy import sparse
 
-from sctransform_native import SCTConfig, fit_transform
+from sctransform_native import SCTConfig, SCTResult, fit_transform
 
 from ._common import load_fixture, load_manifest, matrix_summary, write_json
 
 
-def _rss_sampler(stop: threading.Event, samples: list[int]) -> None:
-    process = psutil.Process()
+def _rss_sampler(pid: int, stop: Any, ready: Any, peak: Any) -> None:
+    process = psutil.Process(pid)
+    ready.set()
     while not stop.wait(0.005):
-        samples.append(process.memory_info().rss)
-    samples.append(process.memory_info().rss)
+        peak.value = max(peak.value, process.memory_info().rss)
+    peak.value = max(peak.value, process.memory_info().rss)
 
 
 def _top_profile(profile: cProfile.Profile, limit: int = 25) -> list[dict[str, Any]]:
@@ -55,6 +57,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--profile", type=Path, required=True)
     parser.add_argument("--block-size", type=int, default=256)
+    parser.add_argument("--warmups", type=int, default=0)
     parser.add_argument(
         "--fit-method", choices=("nb_mle", "cox_reid"), default="nb_mle"
     )
@@ -91,6 +94,8 @@ def main() -> None:
     )
     parser.add_argument("--corrected-umi", action="store_true")
     args = parser.parse_args()
+    if args.warmups < 0:
+        raise ValueError("warmups must be nonnegative")
 
     counts, genes, cells = load_fixture(args.fixture)
     input_matrix = sparse.csr_matrix(counts)
@@ -111,29 +116,43 @@ def main() -> None:
         residual_output=args.residual_output,
         residual_dtype=args.residual_dtype,
     )
+
+    def compute() -> SCTResult:
+        return fit_transform(
+            input_matrix,
+            gene_names=genes,
+            cell_names=cells,
+            config=config,
+            selection=manifest,
+            return_corrected_umi=args.corrected_umi,
+        )
+
+    for _ in range(args.warmups):
+        compute()
     baseline_rss = psutil.Process().memory_info().rss
-    rss_samples = [baseline_rss]
-    stop = threading.Event()
-    sampler = threading.Thread(
-        target=_rss_sampler, args=(stop, rss_samples), daemon=True
+    # Isolate sampling from cProfile's Python call hooks; spawn is CUDA-safe.
+    context = multiprocessing.get_context("spawn")
+    stop, ready = context.Event(), context.Event()
+    peak_rss = context.Value("q", baseline_rss)
+    sampler = context.Process(
+        target=_rss_sampler, args=(os.getpid(), stop, ready, peak_rss), daemon=True
     )
     profile = cProfile.Profile()
-    tracemalloc.start()
     sampler.start()
+    if not ready.wait(30):
+        sampler.terminate()
+        sampler.join()
+        raise RuntimeError("RSS sampler did not start")
+    tracemalloc.start()
     wall_start = time.perf_counter()
     profile.enable()
-    result = fit_transform(
-        input_matrix,
-        gene_names=genes,
-        cell_names=cells,
-        config=config,
-        selection=manifest,
-        return_corrected_umi=args.corrected_umi,
-    )
-    profile.disable()
-    wall_seconds = time.perf_counter() - wall_start
-    stop.set()
-    sampler.join()
+    try:
+        result = compute()
+    finally:
+        profile.disable()
+        wall_seconds = time.perf_counter() - wall_start
+        stop.set()
+        sampler.join()
     _, traced_peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     args.profile.parent.mkdir(parents=True, exist_ok=True)
@@ -177,6 +196,7 @@ def main() -> None:
     )
     report = {
         "schema_version": 1,
+        "warmups": args.warmups,
         "generated_on": datetime.now(timezone.utc).date().isoformat(),
         "model": {
             "fit_method": args.fit_method,
@@ -194,8 +214,8 @@ def main() -> None:
         "wall_seconds": wall_seconds,
         "stage_seconds": result.timing,
         "baseline_rss_bytes": baseline_rss,
-        "peak_rss_bytes": max(rss_samples),
-        "peak_rss_growth_bytes": max(rss_samples) - baseline_rss,
+        "peak_rss_bytes": peak_rss.value,
+        "peak_rss_growth_bytes": peak_rss.value - baseline_rss,
         "python_tracemalloc_peak_bytes": traced_peak,
         "matrices": {
             "input_counts": matrix_summary(input_matrix),
@@ -270,7 +290,7 @@ def main() -> None:
         },
         "top_cprofile_cumulative": _top_profile(profile),
         "notes": {
-            "rss": "sampled process RSS includes Python and native allocations",
+            "rss": "a separate spawn process samples the profiled process RSS; includes Python and native allocations",
             "tracemalloc": "supplement only; does not represent all NumPy/SciPy native memory",
             "cprofile": "call tracing changes absolute timing; use stage medians from run_baseline.py for performance claims",
         },

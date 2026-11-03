@@ -473,7 +473,7 @@ def main() -> None:
             "tracemalloc": (
                 "enabled; timing includes its overhead"
                 if args.trace_python_allocations
-                else "disabled for timing; use profile_stages.py for the supplemental Python-only peak"
+                else "disabled for timing; profile_stages.py reports traced allocations, not total native/GPU memory"
             ),
         },
     }
