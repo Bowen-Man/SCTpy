@@ -41,6 +41,21 @@ def test_anndata_adapter_performs_one_explicit_orientation_conversion(
     np.testing.assert_allclose(adapted.residuals, direct.residuals)
 
 
+def test_anndata_adapter_exposes_corrected_umi_without_mutation() -> None:
+    counts_cxg = np.array([[2, 0, 1], [4, 1, 0], [3, 1, 2], [5, 2, 1]])
+    adata = _adata(sparse.csr_matrix(counts_cxg))
+    result = fit_transform_anndata(
+        adata,
+        config=SCTConfig(min_cells=1, n_genes=None, n_cells=None),
+        return_corrected_umi=True,
+        corrected_umi_depth=10.0,
+    )
+
+    assert result.corrected_umi is not None
+    assert result.corrected_umi.shape == (3, 4)
+    np.testing.assert_array_equal(adata.X.toarray(), counts_cxg)
+
+
 def test_anndata_adapter_rejects_hidden_cuda_to_cpu_transfer() -> None:
     class FakeCudaArray:
         __cuda_array_interface__ = {

@@ -90,6 +90,21 @@ def test_unknown_residual_output_is_rejected() -> None:
         SCTConfig(residual_output="unknown")  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("depth", [0.0, -1.0, np.inf, np.nan])
+def test_corrected_umi_depth_is_explicit_and_positive(depth: float) -> None:
+    with pytest.raises(ValueError, match="corrected_umi_depth"):
+        _fit(
+            np.ones((2, 2), dtype=int),
+            return_corrected_umi=True,
+            corrected_umi_depth=depth,
+        )
+    with pytest.raises(ValueError, match="requires return_corrected_umi"):
+        _fit(
+            np.ones((2, 2), dtype=int),
+            corrected_umi_depth=1.0,
+        )
+
+
 def test_r_v2_preset_is_fixed_and_sampling_is_configurable() -> None:
     config = SCTConfig.r_v2(
         min_cells=7,
@@ -146,7 +161,6 @@ def test_cox_reid_gene_bin_size_is_explicit_and_validated() -> None:
 @pytest.mark.parametrize(
     ("keyword", "message"),
     [
-        ({"return_corrected_umi": True}, "corrected UMI"),
         ({"batch": np.array([0, 1])}, "batch models"),
         ({"covariates": np.ones((2, 1))}, "additional covariates"),
     ],

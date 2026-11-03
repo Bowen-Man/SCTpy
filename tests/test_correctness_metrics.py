@@ -1,4 +1,6 @@
 import numpy as np
+import pytest
+from scipy import sparse
 
 from benchmarks.correctness import (
     gate_metrics,
@@ -7,6 +9,7 @@ from benchmarks.correctness import (
     numeric_mask_metrics,
     numeric_metrics,
     relative_error_metrics,
+    sparse_numeric_metrics,
     top_absolute_errors,
     top_row_rmse,
 )
@@ -24,6 +27,19 @@ def test_numeric_metrics_report_all_required_statistics() -> None:
     }
     assert metrics["n"] == 3
     assert metrics["max_absolute_error"] == 0.5
+
+
+def test_sparse_numeric_metrics_include_implicit_zeros() -> None:
+    left = sparse.csr_matrix(np.array([[0, 1, 2], [0, 0, 3]]))
+    right = sparse.csr_matrix(np.array([[0, 1, 1], [0, 0, 3]]))
+
+    metrics = sparse_numeric_metrics(left, right)
+
+    assert metrics["n"] == 6
+    assert metrics["mae"] == pytest.approx(1.0 / 6.0)
+    assert metrics["rmse"] == pytest.approx(np.sqrt(1.0 / 6.0))
+    assert metrics["max_absolute_error"] == 1.0
+    assert metrics["exact_fraction"] == pytest.approx(5.0 / 6.0)
 
 
 def test_jaccard_and_gate_direction() -> None:

@@ -49,6 +49,15 @@ def _metric() -> dict[str, object]:
 
 def _report() -> dict[str, object]:
     metric = _metric()
+    corrected_metric = {
+        "n": 4,
+        "mae": 0.0,
+        "rmse": 0.0,
+        "max_absolute_error": 0.0,
+        "pearson": 1.0,
+        "exact_fraction": 1.0,
+        "gate": True,
+    }
     return {
         "schema_version": 1,
         "native_gate_passed": True,
@@ -87,7 +96,12 @@ def _report() -> dict[str, object]:
                 "log10_theta": metric,
                 "parameter_outliers": _named_set(),
             },
-            "residual": {"matrix": metric, "mean": metric, "variance": metric},
+            "residual": {
+                "matrix": metric,
+                "mean": metric,
+                "variance": metric,
+                "corrected_umi": corrected_metric,
+            },
             "hvg": {
                 "complete_order_exact": True,
                 "complete_gene_set": _named_set(),

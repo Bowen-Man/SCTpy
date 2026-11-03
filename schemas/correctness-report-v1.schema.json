@@ -111,6 +111,28 @@
       },
       "additionalProperties": true
     },
+    "correctedUmiMetric": {
+      "type": "object",
+      "required": [
+        "n",
+        "mae",
+        "rmse",
+        "max_absolute_error",
+        "pearson",
+        "exact_fraction",
+        "gate"
+      ],
+      "properties": {
+        "n": {"$ref": "#/$defs/nonnegativeInteger"},
+        "mae": {"type": "number"},
+        "rmse": {"type": "number"},
+        "max_absolute_error": {"type": "number"},
+        "pearson": {"$ref": "#/$defs/nullableNumber"},
+        "exact_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "gate": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
     "inputStage": {
       "type": "object",
       "required": [
@@ -223,7 +245,13 @@
       "properties": {
         "matrix": {"$ref": "#/$defs/numericMetric"},
         "mean": {"$ref": "#/$defs/numericMetric"},
-        "variance": {"$ref": "#/$defs/numericMetric"}
+        "variance": {"$ref": "#/$defs/numericMetric"},
+        "corrected_umi": {
+          "oneOf": [
+            {"$ref": "#/$defs/correctedUmiMetric"},
+            {"type": "null"}
+          ]
+        }
       },
       "additionalProperties": true
     },

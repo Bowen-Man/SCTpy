@@ -78,6 +78,8 @@ def test_cpu_core_produces_complete_float64_result() -> None:
 
     assert result.residuals.shape == counts.shape
     assert result.residuals.dtype == np.float64
+    assert result.corrected_umi is None
+    assert result.corrected_umi_depth is None
     assert np.count_nonzero(result.converged) >= 4
     assert np.all(result.slope[result.eligible_gene] == np.log(10.0))
     assert np.all(np.isfinite(result.regularized_intercept[result.eligible_gene]))
@@ -128,6 +130,80 @@ def test_summary_residual_output_matches_full_without_retaining_matrix() -> None
     assert_allclose(summary.residual_variance, full.residual_variance, equal_nan=True)
     assert_array_equal(summary.hvg_order, full.hvg_order)
     assert_array_equal(summary.hvg_rank, full.hvg_rank)
+
+
+def test_corrected_umi_reverses_model_at_explicit_depth_in_sparse_blocks() -> None:
+    counts, genes, cells = _overdispersed_fixture()
+    counts = np.insert(counts, 3, np.r_[1, np.zeros(counts.shape[1] - 1)], axis=0)
+    genes = (*genes[:3], "rare", *genes[3:])
+    target_depth = 120.0
+    result = fit_transform(
+        sparse.csr_matrix(counts),
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig.r_v2(
+            n_genes=None,
+            n_cells=None,
+            residual_block_size=3,
+            residual_output="summary",
+        ),
+        return_corrected_umi=True,
+        corrected_umi_depth=target_depth,
+    )
+
+    assert result.residuals is None
+    assert sparse.isspmatrix_csr(result.corrected_umi)
+    assert result.corrected_umi.dtype == np.int64
+    assert result.corrected_umi_depth == target_depth
+
+    modeled = np.flatnonzero(result.eligible_gene)
+    intercept = result.regularized_intercept[modeled, None]
+    theta = result.regularized_theta[modeled]
+    inverse_theta = np.zeros(theta.size, dtype=np.float64)
+    finite_theta = np.isfinite(theta)
+    inverse_theta[finite_theta] = 1.0 / theta[finite_theta]
+    observed = counts[modeled].astype(np.float64)
+    mu = np.exp(intercept) * result.library_size[None, :]
+    variance = mu + mu**2 * inverse_theta[:, None]
+    pearson = (observed - mu) / np.sqrt(variance)
+    target_mu = np.exp(intercept) * target_depth
+    target_variance = target_mu + target_mu**2 * inverse_theta[:, None]
+    expected = np.maximum(
+        np.rint(target_mu + pearson * np.sqrt(target_variance)), 0.0
+    ).astype(np.int64)
+
+    corrected = result.corrected_umi.toarray()
+    assert_array_equal(corrected[modeled], expected)
+    assert_array_equal(corrected[~result.eligible_gene], 0)
+
+
+def test_corrected_umi_defaults_to_median_depth_and_matches_output_modes() -> None:
+    counts, genes, cells = _overdispersed_fixture()
+    full = fit_transform(
+        counts,
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig.r_v2(n_genes=None, n_cells=None),
+        return_corrected_umi=True,
+    )
+    summary = fit_transform(
+        counts,
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig.r_v2(
+            n_genes=None,
+            n_cells=None,
+            residual_output="summary",
+        ),
+        selection=full.selection,
+        return_corrected_umi=True,
+    )
+
+    assert full.corrected_umi_depth == float(np.median(full.library_size))
+    assert summary.corrected_umi_depth == full.corrected_umi_depth
+    assert full.corrected_umi is not None
+    assert summary.corrected_umi is not None
+    assert (full.corrected_umi != summary.corrected_umi).nnz == 0
 
 
 def test_sct_v2_dispersion_regularization_is_explicit() -> None:

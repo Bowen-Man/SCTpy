@@ -68,7 +68,8 @@ equivalent. **confirmed from paper and official documentation**
   as external processes producing numeric observations.
 - Start with float64 and a genes-by-cells numerical core. AnnData conversion is a separate
   cells-by-genes adapter.
-- Do not implement corrected UMI, batch effects, or extra covariates in the first alpha.
+- Add corrected UMI only after an independent specification and numerical gate; continue
+  to defer batch effects and extra covariates.
 - Record selection indices and names in a manifest; never rely on an implicit RNG stream.
 - Follow the official v2 selection order: sample cells, recheck `min_cells`, exclude
   non-overdispersed genes, then inverse-density sample by log geometric mean. Use a named

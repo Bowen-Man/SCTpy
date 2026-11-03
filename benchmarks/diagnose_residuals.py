@@ -71,16 +71,19 @@ def residual_reinjection_report(
     if nonzero_median == 0.0:
         raise ValueError("fixture must contain at least one nonzero count")
     clip_limit = float(np.sqrt(cells))
-    residuals, residual_mean, residual_variance, hvg_order, _ = _residuals_and_summary(
-        sparse.csr_matrix(counts),
-        library_size=library_size,
-        eligible=eligible,
-        intercept=intercept,
-        theta=theta,
-        clip_range=(-clip_limit, clip_limit),
-        standard_deviation_floor=nonzero_median / 5.0,
-        block_size=256,
-        store_residuals=True,
+    residuals, _, residual_mean, residual_variance, hvg_order, _ = (
+        _residuals_and_summary(
+            sparse.csr_matrix(counts),
+            library_size=library_size,
+            eligible=eligible,
+            intercept=intercept,
+            theta=theta,
+            clip_range=(-clip_limit, clip_limit),
+            standard_deviation_floor=nonzero_median / 5.0,
+            block_size=256,
+            store_residuals=True,
+            corrected_umi_depth=None,
+        )
     )
     assert residuals is not None
 

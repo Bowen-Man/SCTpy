@@ -36,6 +36,7 @@ result <- vst(
   n_genes = n_genes,
   n_cells = n_cells,
   return_cell_attr = TRUE,
+  return_corrected_umi = TRUE,
   verbosity = 0
 )
 elapsed <- proc.time()[["elapsed"]] - started
@@ -54,6 +55,7 @@ model_fit <- result[["model_pars_fit"]]
 model_raw <- result[["model_pars"]]
 gene_attr <- result[["gene_attr"]]
 residuals <- result[["y"]]
+corrected_umi <- result[["umi_corrected"]]
 genes <- rownames(model_fit)
 cells <- colnames(residuals)
 raw_genes <- rownames(model_raw)
@@ -90,6 +92,10 @@ write_f64(model_fit[genes, "theta"], "regularized_theta.f64")
 write_f64(model_raw[raw_genes, "(Intercept)"], "raw_intercept.f64")
 write_f64(model_raw[raw_genes, "theta"], "raw_theta.f64")
 write_matrix_f64(residuals[genes, cells, drop = FALSE], "residuals.f64")
+writeMM(
+  as(corrected_umi[genes, cells, drop = FALSE], "CsparseMatrix"),
+  file.path(output_dir, "corrected_umi.mtx")
+)
 write_f64(gene_attr[genes, "residual_mean"], "residual_mean.f64")
 write_f64(gene_attr[genes, "residual_variance"], "residual_variance.f64")
 
@@ -108,6 +114,8 @@ metadata <- c(
   paste("requested_cells", ifelse(is.null(n_cells), "all", n_cells), sep = "\t"),
   paste("selection_seed", ifelse(is.na(selection_seed), "not_used", selection_seed), sep = "\t"),
   paste("parameter_outliers", sum(outlier_mask), sep = "\t"),
+  paste("corrected_umi_depth", format(median(colSums(umi)), digits = 17), sep = "\t"),
+  paste("corrected_umi_nnz", nnzero(corrected_umi), sep = "\t"),
   paste("elapsed_seconds", format(elapsed, digits = 17), sep = "\t"),
   paste("generated_on", format(Sys.Date()), sep = "\t")
 )

@@ -29,6 +29,8 @@ def fit_transform_anndata(
     layer: str | None = None,
     config: SCTConfig | None = None,
     selection: SelectionManifest | None = None,
+    return_corrected_umi: bool = False,
+    corrected_umi_depth: float | None = None,
 ) -> SCTResult:
     """Read cells-by-genes counts from AnnData without mutating the object.
 
@@ -55,4 +57,6 @@ def fit_transform_anndata(
         matrix_orientation="cells_by_genes",
         config=config,
         selection=selection,
+        return_corrected_umi=return_corrected_umi,
+        corrected_umi_depth=corrected_umi_depth,
     )

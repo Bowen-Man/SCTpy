@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
+from scipy import sparse
 from scipy.stats import rankdata
 
 THRESHOLDS: dict[str, dict[str, float]] = {
@@ -13,6 +14,11 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     "log10_theta": {"mae": 0.25, "spearman": 0.90},
     "residual": {"rmse": 0.15, "pearson": 0.99},
     "residual_variance": {"spearman": 0.98},
+    "corrected_umi": {
+        "mae": 0.01,
+        "max_absolute_error": 2.0,
+        "exact_fraction": 0.99,
+    },
     "hvg": {"jaccard": 0.90},
 }
 
@@ -60,6 +66,41 @@ def numeric_metrics(
         "max_absolute_error": float(np.max(np.abs(difference))),
         "pearson": pearson,
         "spearman": spearman,
+    }
+
+
+def sparse_numeric_metrics(
+    left: sparse.spmatrix, right: sparse.spmatrix
+) -> dict[str, float | int | None]:
+    """Compare sparse matrices without materializing structural zeros."""
+    left = sparse.csr_matrix(left, dtype=np.float64)
+    right = sparse.csr_matrix(right, dtype=np.float64)
+    if left.shape != right.shape:
+        raise ValueError("sparse matrices must have identical shapes")
+    size = int(np.prod(left.shape))
+    if size == 0:
+        raise ValueError("sparse matrices must not be empty")
+    difference = left - right
+    difference.eliminate_zeros()
+    absolute = np.abs(difference.data)
+    squared_sum = float(np.dot(difference.data, difference.data))
+    sum_left = float(left.sum())
+    sum_right = float(right.sum())
+    sum_left_squared = float(left.multiply(left).sum())
+    sum_right_squared = float(right.multiply(right).sum())
+    sum_product = float(left.multiply(right).sum())
+    covariance = size * sum_product - sum_left * sum_right
+    variance_left = size * sum_left_squared - sum_left**2
+    variance_right = size * sum_right_squared - sum_right**2
+    denominator = float(np.sqrt(max(variance_left * variance_right, 0.0)))
+    pearson = covariance / denominator if denominator > 0.0 else None
+    return {
+        "n": size,
+        "mae": float(np.sum(absolute) / size),
+        "rmse": float(np.sqrt(squared_sum / size)),
+        "max_absolute_error": float(np.max(absolute)) if absolute.size else 0.0,
+        "pearson": pearson,
+        "exact_fraction": float(1.0 - difference.nnz / size),
     }
 
 
