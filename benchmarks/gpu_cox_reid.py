@@ -17,12 +17,12 @@ import numpy as np
 from scipy import sparse
 
 from sctransform_native._fit import (
-    _COX_REID_CORRECTION,
     _DISPERSION_CEILING,
     _DISPERSION_FLOOR,
     _cox_reid_score_batch,
     offset_intercept,
 )
+from sctransform_native._gpu import _dispersion_roots_cupy
 
 from ._common import load_fixture, write_json
 from .correctness import numeric_metrics
@@ -124,112 +124,6 @@ def dispersion_roots_numpy(
         where=dispersion != 0.0,
     )
     return theta, poisson, ceiling, expansion_rounds
-
-
-def _cox_reid_score_cupy(
-    cp: Any, digamma: Any, log_dispersion: Any, counts: Any, mu: Any
-) -> Any:
-    dispersion = cp.exp(log_dispersion)
-    inverse_dispersion = 1.0 / dispersion
-    scaled_mu = mu * dispersion[:, None]
-    suggestion = cp.log1p(scaled_mu) - mu / (mu + inverse_dispersion[:, None])
-    upper = scaled_mu**2 / (1.0 + scaled_mu)
-    lower = scaled_mu**2 * (1.0 / (1.0 + scaled_mu) - 0.5)
-    likelihood_term = cp.where(
-        scaled_mu < 1.0e-10,
-        lower,
-        cp.where(
-            scaled_mu < 1.0e-4,
-            cp.clip(suggestion, lower, upper),
-            suggestion,
-        ),
-    )
-    likelihood_score = inverse_dispersion * cp.sum(
-        likelihood_term + counts / (mu + inverse_dispersion[:, None]),
-        axis=1,
-        dtype=cp.float64,
-    )
-
-    count_sum = cp.sum(counts, axis=1, dtype=cp.float64)
-    correction_value = cp.sum(counts * (counts - 1.0), axis=1, dtype=cp.float64) / (
-        2.0 * inverse_dispersion
-    )
-    correction = cp.where(inverse_dispersion > 1.0e5, correction_value, 0.0)
-    asymptotic = cp.max(counts, axis=1) * 1.0e6 < inverse_dispersion
-    exact_score = cp.sum(
-        (
-            digamma(counts + inverse_dispersion[:, None])
-            - digamma(inverse_dispersion[:, None])
-        )
-        * inverse_dispersion[:, None],
-        axis=1,
-        dtype=cp.float64,
-    )
-    upper_digamma = count_sum - correction
-    digamma_score = cp.where(
-        asymptotic, upper_digamma, cp.minimum(exact_score, upper_digamma)
-    )
-
-    weights = mu / (1.0 + dispersion[:, None] * mu)
-    adjustment = (
-        0.5
-        * dispersion
-        * _COX_REID_CORRECTION
-        * cp.sum(weights * weights, axis=1, dtype=cp.float64)
-        / (cp.sum(weights, axis=1, dtype=cp.float64) + 1.0e-6)
-    )
-    return likelihood_score - digamma_score + adjustment
-
-
-def _dispersion_roots_cupy(
-    cp: Any, digamma: Any, counts: Any, mu: Any, initial_dispersion: Any
-) -> tuple[Any, Any, Any, int, int]:
-    lower = cp.full(counts.shape[0], np.log(_DISPERSION_FLOOR), dtype=cp.float64)
-    lower_score = _cox_reid_score_cupy(cp, digamma, lower, counts, mu)
-    poisson = lower_score < 0.0
-    upper_dispersion = cp.minimum(
-        cp.maximum(initial_dispersion, _DISPERSION_FLOOR * 4.0),
-        _DISPERSION_CEILING,
-    )
-    upper_score = _cox_reid_score_cupy(
-        cp, digamma, cp.log(upper_dispersion), counts, mu
-    )
-    expansion_rounds = 0
-    host_synchronizations = 0
-    while True:
-        expanding = (
-            (~poisson) & (upper_score > 0.0) & (upper_dispersion < _DISPERSION_CEILING)
-        )
-        host_synchronizations += 1
-        if not bool(cp.any(expanding).get()):
-            break
-        expansion_rounds += 1
-        upper_dispersion = cp.where(
-            expanding,
-            cp.minimum(upper_dispersion * 4.0, _DISPERSION_CEILING),
-            upper_dispersion,
-        )
-        candidate_score = _cox_reid_score_cupy(
-            cp, digamma, cp.log(upper_dispersion), counts, mu
-        )
-        upper_score = cp.where(expanding, candidate_score, upper_score)
-
-    ceiling = (~poisson) & (upper_score > 0.0)
-    bracketed = ~(poisson | ceiling)
-    upper = cp.log(upper_dispersion)
-    for _ in range(48):
-        midpoint = 0.5 * (lower + upper)
-        score = _cox_reid_score_cupy(cp, digamma, midpoint, counts, mu)
-        positive = (score > 0.0) & bracketed
-        negative = (~positive) & bracketed
-        lower = cp.where(positive, midpoint, lower)
-        upper = cp.where(negative, midpoint, upper)
-
-    dispersion = cp.exp(0.5 * (lower + upper))
-    dispersion = cp.where(poisson, 0.0, dispersion)
-    dispersion = cp.where(ceiling, _DISPERSION_CEILING, dispersion)
-    theta = cp.where(dispersion == 0.0, cp.inf, 1.0 / dispersion)
-    return theta, poisson, ceiling, expansion_rounds, host_synchronizations
 
 
 def _select_block(
@@ -414,9 +308,9 @@ def main() -> None:
             d2h_start = cp.cuda.Event()
             d2h_end = cp.cuda.Event()
             d2h_start.record()
-            theta = cp.asnumpy(device_result[0])
-            poisson = cp.asnumpy(device_result[1])
-            ceiling = cp.asnumpy(device_result[2])
+            theta = cp.asnumpy(device_result.theta)
+            poisson = cp.asnumpy(device_result.poisson)
+            ceiling = cp.asnumpy(device_result.ceiling)
             d2h_end.record()
             d2h_end.synchronize()
             elapsed = time.perf_counter() - wall_started
@@ -455,8 +349,8 @@ def main() -> None:
             theta,
             poisson,
             ceiling,
-            device_result[3],
-            device_result[4],
+            device_result.expansion_rounds,
+            device_result.host_synchronizations,
         )
         del device_counts, device_mu, device_initial, device_result
     assert gpu_result is not None

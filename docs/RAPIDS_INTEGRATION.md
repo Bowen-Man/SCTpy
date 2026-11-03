@@ -1,8 +1,8 @@
 # RAPIDS and GPU boundary
 
-There is currently no package GPU backend. CPU installation and import do not require or
-import CUDA packages, and the AnnData adapter rejects CUDA-backed counts instead of
-performing a hidden device transfer.
+The package has one opt-in GPU operation: batched Cox--Reid dispersion roots. CPU
+installation and import do not require or import CUDA packages, and the AnnData adapter
+rejects CUDA-backed counts instead of performing a hidden device transfer.
 
 ## Ecosystem contract
 
@@ -10,8 +10,8 @@ performing a hidden device transfer.
 - rapids-singlecell exposes explicit AnnData CPU/GPU transfer helpers. Its analytic
   Pearson-residual normalization uses a shared supplied theta and is not complete SCT v2.
 - CuPy/SciPy sparse conversion transfers data and is never treated as implicit.
-- RMM may later supply a CuPy allocator, but allocator and device selection remain caller
-  decisions.
+- RMM may supply the active CuPy allocator, but allocator, stream, and device selection
+  remain caller decisions.
 - ScaleSC's relevant contribution here is explicit movement and chunked data flow, not an
   SCT algorithm.
 
@@ -61,5 +61,20 @@ overhead, leaving no safe 12 GB headroom. A backend must therefore retain CPU pr
 fitting and process bounded gene blocks. The benchmark owns its RMM pool; library code
 must not replace a caller's allocator.
 
-GPU dependencies will be published only when a GPU implementation enters the package.
-Until then, the local CUDA development environment is intentionally not package metadata.
+## Package backend result
+
+`SCTConfig.r_v2(cox_reid_backend="cupy")` transfers only each dense fitting block and
+returns ordinary CPU results. It does not accept device-resident AnnData, initialize RMM,
+or move regularization and residual stages. CuPy is confined to the optional `gpu`
+(CUDA 13) and `gpu-cu12` extras; RAPIDS and RMM are not runtime dependencies. Two CPU
+score checks preserve exact floor/ceiling branch decisions, with CPU roots used only for
+disagreements.
+
+On the same local H5AD, a shared manifest selected 2,000 genes and 10,000 cells, with
+128-gene blocks and streamed residual summaries. CPU and CuPy fit stages took `21.926 s`
+and `3.632 s`; full calls took `24.931 s` and `6.161 s` (6.04x fit, 4.05x end-to-end).
+Finite/Inf theta, theta-postprocess, and outlier masks and HVG order were exact; raw
+log10-theta RMSE was `1.82e-8`, regularized log10-theta RMSE was `1.89e-13`, and
+residual-variance RMSE was `2.61e-14`.
+On the 3,200 x 240 fixture the GPU fit was slower (`0.272 s` versus `0.092 s`), so the
+backend remains explicit rather than automatic. **measured on 2026-11-03**

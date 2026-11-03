@@ -75,4 +75,6 @@ equivalent. **confirmed from paper and official documentation**
   non-overdispersed genes, then inverse-density sample by log geometric mean. Use a named
   PCG64 stream rather than adding an R RNG compatibility layer. **confirmed from official
   source; project decision** for the RNG.
-- Do not add a GPU implementation until CPU stage timings demonstrate a target.
+- Restrict the first GPU implementation to the Cox--Reid root block selected by CPU
+  stage timings; keep other stages on CPU until separately justified. **measured/project
+  decision**

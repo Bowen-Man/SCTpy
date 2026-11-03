@@ -34,8 +34,9 @@ def fit_transform_anndata(
 ) -> SCTResult:
     """Read cells-by-genes counts from AnnData without mutating the object.
 
-    This alpha adapter is CPU-only. CUDA-backed AnnData inputs are rejected instead of
-    being copied to host as a hidden side effect.
+    Inputs and outputs are CPU-resident. CUDA-backed AnnData counts are rejected instead
+    of being copied to host as a hidden side effect; an explicitly selected fitting
+    backend may still move bounded internal blocks to a device.
     """
     if layer is None:
         counts = adata.X

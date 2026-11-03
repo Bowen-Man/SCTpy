@@ -48,6 +48,12 @@ real-data = [
 anndata = [
   "anndata>=0.10.8",
 ]
+gpu = [
+  "cupy-cuda13x>=14,<15",
+]
+gpu-cu12 = [
+  "cupy-cuda12x>=14,<15",
+]
 
 [project.urls]
 Homepage = "https://github.com/Bowen-Man/sctransform-native"
