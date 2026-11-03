@@ -265,6 +265,7 @@ def native_result(
     fit_method: str = "nb_mle",
     cox_reid_gene_bin_size: int | None = None,
     cox_reid_batch_size: int | None = None,
+    cox_reid_backend: str = "numpy",
     dispersion_regularization: str = "native",
     regularization_method: str = "native",
     regularization_support: str = "extrapolate",
@@ -284,6 +285,7 @@ def native_result(
             fit_method=fit_method,
             cox_reid_gene_bin_size=cox_reid_gene_bin_size,
             cox_reid_batch_size=cox_reid_batch_size,
+            cox_reid_backend=cox_reid_backend,
             dispersion_regularization=dispersion_regularization,
             regularization_method=regularization_method,
             regularization_support=regularization_support,
@@ -386,6 +388,9 @@ def main() -> None:
     parser.add_argument("--cox-reid-gene-bin-size", type=int)
     parser.add_argument("--cox-reid-batch-size", type=int)
     parser.add_argument(
+        "--cox-reid-backend", choices=("numpy", "cupy"), default="numpy"
+    )
+    parser.add_argument(
         "--dispersion-regularization",
         choices=("native", "sct_v2"),
         default="native",
@@ -419,6 +424,7 @@ def main() -> None:
         fit_method=args.fit_method,
         cox_reid_gene_bin_size=args.cox_reid_gene_bin_size,
         cox_reid_batch_size=args.cox_reid_batch_size,
+        cox_reid_backend=args.cox_reid_backend,
         dispersion_regularization=args.dispersion_regularization,
         regularization_method=args.regularization_method,
         regularization_support=args.regularization_support,
@@ -460,6 +466,7 @@ def main() -> None:
         "fit_method": args.fit_method,
         "cox_reid_gene_bin_size": args.cox_reid_gene_bin_size,
         "cox_reid_batch_size": args.cox_reid_batch_size,
+        "cox_reid_backend": args.cox_reid_backend,
         "dispersion_regularization": args.dispersion_regularization,
         "regularization_method": args.regularization_method,
         "regularization_support": args.regularization_support,
@@ -510,10 +517,12 @@ def main() -> None:
             "hvg": level_c_vs_level_a["hvg"],
         },
     }
-    gates = _all_gates(report["level_c_vs_level_a"]) + _all_gates(
-        report["level_c_vs_level_b"]
+    for level in ("a", "b"):
+        gates = _all_gates(report[f"level_c_vs_level_{level}"])
+        report[f"level_{level}_gate_passed"] = bool(gates and all(gates))
+    report["native_gate_passed"] = (
+        report["level_a_gate_passed"] and report["level_b_gate_passed"]
     )
-    report["native_gate_passed"] = bool(gates and all(gates))
     validate_correctness_report(report)
     write_json(args.output, report)
     print(json.dumps(report, allow_nan=False, indent=2, sort_keys=True))
