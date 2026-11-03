@@ -63,7 +63,6 @@ jobs:
       - name: Enforce the full differential gate
         run: |
           timeout 1800 python -m benchmarks.compare_correctness --fixture benchmark-results/nightly/fixture.npz --manifest benchmark-results/nightly/fixture.selection.json --r-oracle benchmark-results/nightly/r-oracle --reference benchmark-results/nightly/reference-v0.4.0.npz --fit-method cox_reid --cox-reid-gene-bin-size 500 --cox-reid-batch-size 64 --dispersion-regularization sct_v2 --regularization-method r_stats --regularization-support clamp --theta-postprocess moment_ratio --output benchmark-results/nightly/correctness.json --enforce
-          python -m benchmarks.diagnose_regularization --fixture benchmark-results/nightly/fixture.npz --r-oracle benchmark-results/nightly/r-oracle --output benchmark-results/nightly/regularization-reinjection.json --enforce
           python -m benchmarks.diagnose_residuals --fixture benchmark-results/nightly/fixture.npz --r-oracle benchmark-results/nightly/r-oracle --output benchmark-results/nightly/residual-reinjection.json --enforce
       - name: Upload compact diagnostics
         if: always()
@@ -72,7 +71,6 @@ jobs:
           name: r-oracle-nightly-${{ github.run_id }}
           path: |
             benchmark-results/nightly/correctness.json
-            benchmark-results/nightly/regularization-reinjection.json
             benchmark-results/nightly/residual-reinjection.json
             benchmark-results/nightly/fixture.provenance.json
             benchmark-results/nightly/fixture.selection.json

@@ -87,9 +87,12 @@ After correction, CPU and CuPy both matched all 51,465,000 eligible PBMC correct
 counts exactly. CuPy versus R residual RMSE was `4.49e-9`, residual-variance RMSE
 `4.68e-8`, and regularized-intercept RMSE `5.07e-10`; HVG Top 1000/2000/3000 sets,
 raw finite/Inf theta and outlier masks were exact.
-The frozen Level B itself differs from Level A by up to 8 UMI on this dataset, exceeding
-the unchanged maximum-error gate of 2. The joint A/B gate therefore remains failed;
-this is not evidence for relaxing its thresholds. **measured on 2026-11-03**
+An earlier 8-UMI discrepancy came from the Level-B exporter removing 120 of the
+2,000 selected genes using sampled-cell statistics. That changed fitting bins and
+regularization; it was not a same-manifest comparison. The reference accepts the full
+ordered manifest. Replaying it unchanged makes all 51,465,000 corrected counts identical
+across R, v0.4.0, native CPU and CuPy; both native joint gates pass without changing any
+tolerance. The exporter now checks the returned gene/cell order. **measured on 2026-11-03**
 
 ## Report and benchmark contracts
 
@@ -125,8 +128,8 @@ fixture/machine measurements, not a general speed claim. **measured on 2026-11-0
 
 Reproduction commands and pinned oracle versions live in the
 [synthetic oracle workflow](../.github/workflows/r-oracle-nightly.yml) and
-[public PBMC workflow](../.github/workflows/real-data-validation.yml). The latter keeps
-the joint gate enforced, including the recorded Level-B corrected-count discrepancy.
+[public PBMC workflow](../.github/workflows/real-data-validation.yml). Both enforce
+the joint gate using the persisted selection manifest without additional gene filtering.
 Reports also expose `level_a_gate_passed` and `level_b_gate_passed` separately.
 
 The baseline, profiler and differential runners accept `--cox-reid-backend cupy` with
