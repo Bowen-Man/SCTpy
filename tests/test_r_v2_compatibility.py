@@ -1,3 +1,5 @@
+import hashlib
+import json
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +15,7 @@ from benchmarks.generate_fixture import generate_counts
 from sctransform_native import SCTConfig, SelectionManifest, fit_transform
 
 GOLDEN_PATH = Path(__file__).parent / "data" / "r_v2_small_golden.npz"
+PROVENANCE_PATH = GOLDEN_PATH.with_suffix(".provenance.json")
 COUNTS_SHA256 = "daa4251f89ad449d0508ebef01bca762ea3960830b0160623d809db1131c2337"
 
 
@@ -33,6 +36,11 @@ def _assert_error_bounds(
 
 
 def test_r_v2_small_frozen_correctness_gate() -> None:
+    provenance = json.loads(PROVENANCE_PATH.read_text(encoding="utf-8"))
+    assert (
+        hashlib.sha256(GOLDEN_PATH.read_bytes()).hexdigest()
+        == provenance["artifact"]["sha256"]
+    )
     counts = generate_counts(genes=800, cells=240, seed=20261102)
     assert count_sha256(counts) == COUNTS_SHA256
     gene_names = tuple(f"gene_{index:05d}" for index in range(counts.shape[0]))
