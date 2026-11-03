@@ -165,7 +165,7 @@ def test_corrected_umi_reverses_model_at_explicit_depth_in_sparse_blocks() -> No
     observed = counts[modeled].astype(np.float64)
     mu = np.exp(intercept) * result.library_size[None, :]
     variance = mu + mu**2 * inverse_theta[:, None]
-    pearson = (observed - mu) / np.sqrt(variance)
+    pearson = (observed - mu) / np.maximum(np.sqrt(variance), result.nonzero_median / 5)
     target_mu = np.exp(intercept) * target_depth
     target_variance = target_mu + target_mu**2 * inverse_theta[:, None]
     expected = np.maximum(

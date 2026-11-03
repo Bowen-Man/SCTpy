@@ -51,11 +51,13 @@ A gene is Poisson-like when its full-data arithmetic mean is below `0.001` or it
 variance is no greater than its mean. It receives `theta = infinity` and
 
 ```text
-beta_g0 = log(sum_c X_gc / sum_c n_c).
+beta_g0 = log(sum_c X_gc / sum_{h eligible,c} X_hc).
 ```
 
-An all-zero gene has intercept `-infinity` and exact zero mean. **confirmed from paper and
-official documentation**; the explicit zero representation is a **project decision**.
+In the Cox--Reid v2 path the Poisson intercept uses the total across genes passing
+`min_cells`; model offsets still use full input library sizes. This asymmetry is
+**measured** against R 0.4.3 on public PBMC counts (intercept error below `2e-15`).
+The native research path uses the full input total. An all-zero gene is excluded.
 
 ## Regularization
 
@@ -108,17 +110,21 @@ measured**
 When requested, the same regularized model is inverted at one fixed library depth `n0`:
 
 ```text
-Z_gc = (X_gc - mu_gc) / model_sd_gc
+Z_gc = (X_gc - mu_gc) / max(model_sd_gc, median(nonzero counts) / 5)
 mu0_g = exp(beta_fit_g0) * n0
 X_corrected_gc = round(max(0, mu0_g + Z_gc * sqrt(mu0_g + mu0_g**2/theta_fit_g)))
 ```
 
-This path uses the unclipped Pearson residual and model standard deviation without the
-residual floor. `n0` defaults to the median input library size. The result is an int64
+This path matches `vst(return_corrected_umi=TRUE)`: use the variance floor on the
+original-depth residual, before clipping; use the unfloored model variance at the
+target depth. Do not conflate this output with the separate R `correct_counts` API.
+The floor reconstruction with exported R parameters exactly reproduced all 51,465,000
+eligible PBMC entries. **measured**; see the official [`vst`](https://rdrr.io/cran/sctransform/man/vst.html)
+and [`correct`](https://rdrr.io/cran/sctransform/man/correct.html) API contracts.
+`n0` defaults to the median input library size. The result is an int64
 genes-by-cells CSR matrix; excluded genes remain zero. It is produced in the residual
 gene blocks, does not require retaining the dense residual matrix, and always uses the
-float64 model even when residual output is float32. **confirmed from paper and official
-documentation; measured**
+float64 model even when residual output is float32.
 
 ## Explicit exclusions
 
