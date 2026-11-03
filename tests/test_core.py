@@ -183,7 +183,11 @@ def test_corrected_umi_defaults_to_median_depth_and_matches_output_modes() -> No
         counts,
         gene_names=genes,
         cell_names=cells,
-        config=SCTConfig.r_v2(n_genes=None, n_cells=None),
+        config=SCTConfig.r_v2(
+            n_genes=None,
+            n_cells=None,
+            residual_dtype="float32",
+        ),
         return_corrected_umi=True,
     )
     summary = fit_transform(
@@ -194,6 +198,7 @@ def test_corrected_umi_defaults_to_median_depth_and_matches_output_modes() -> No
             n_genes=None,
             n_cells=None,
             residual_output="summary",
+            residual_dtype="float32",
         ),
         selection=full.selection,
         return_corrected_umi=True,

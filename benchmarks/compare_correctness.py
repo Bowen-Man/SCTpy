@@ -269,6 +269,7 @@ def native_result(
     regularization_method: str = "native",
     regularization_support: str = "extrapolate",
     theta_postprocess: str = "none",
+    residual_dtype: str = "float64",
 ) -> tuple[dict[str, Any], dict[str, float]]:
     counts, genes, cells = load_fixture(fixture)
     manifest = load_manifest(manifest_path)
@@ -288,6 +289,7 @@ def native_result(
             regularization_support=regularization_support,
             theta_postprocess=theta_postprocess,
             theta_moment_ratio_threshold=THETA_MOMENT_RATIO_THRESHOLD,
+            residual_dtype=residual_dtype,
         ),
         selection=manifest,
         return_corrected_umi=True,
@@ -403,6 +405,9 @@ def main() -> None:
         choices=("none", "moment_ratio"),
         default="none",
     )
+    parser.add_argument(
+        "--residual-dtype", choices=("float64", "float32"), default="float64"
+    )
     parser.add_argument("--enforce", action="store_true")
     args = parser.parse_args()
 
@@ -418,6 +423,7 @@ def main() -> None:
         regularization_method=args.regularization_method,
         regularization_support=args.regularization_support,
         theta_postprocess=args.theta_postprocess,
+        residual_dtype=args.residual_dtype,
     )
     counts, fixture_genes, fixture_cells = load_fixture(args.fixture)
     manifest = load_manifest(args.manifest)
@@ -458,6 +464,7 @@ def main() -> None:
         "regularization_method": args.regularization_method,
         "regularization_support": args.regularization_support,
         "theta_postprocess": args.theta_postprocess,
+        "residual_dtype": args.residual_dtype,
         "theta_moment_ratio_threshold": THETA_MOMENT_RATIO_THRESHOLD,
         "thresholds_preregistered": THRESHOLDS,
         "level_b_vs_level_a": compare_pair(level_b, level_a),

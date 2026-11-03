@@ -90,6 +90,11 @@ def test_unknown_residual_output_is_rejected() -> None:
         SCTConfig(residual_output="unknown")  # type: ignore[arg-type]
 
 
+def test_unknown_residual_dtype_is_rejected() -> None:
+    with pytest.raises(ValueError, match="residual_dtype"):
+        SCTConfig(residual_dtype="float16")  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize("depth", [0.0, -1.0, np.inf, np.nan])
 def test_corrected_umi_depth_is_explicit_and_positive(depth: float) -> None:
     with pytest.raises(ValueError, match="corrected_umi_depth"):

@@ -66,8 +66,8 @@ equivalent. **confirmed from paper and official documentation**
 
 - Use papers and public documentation to define the contract; use all GPL projects only
   as external processes producing numeric observations.
-- Start with float64 and a genes-by-cells numerical core. AnnData conversion is a separate
-  cells-by-genes adapter.
+- Keep fitting and the genes-by-cells reference core in float64. Float32 is opt-in only
+  for the validated residual path. AnnData conversion is a separate cells-by-genes adapter.
 - Add corrected UMI only after an independent specification and numerical gate; continue
   to defer batch effects and extra covariates.
 - Record selection indices and names in a manifest; never rely on an implicit RNG stream.

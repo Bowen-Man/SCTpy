@@ -82,6 +82,7 @@ def residual_reinjection_report(
             standard_deviation_floor=nonzero_median / 5.0,
             block_size=256,
             store_residuals=True,
+            residual_dtype="float64",
             corrected_umi_depth=None,
         )
     )

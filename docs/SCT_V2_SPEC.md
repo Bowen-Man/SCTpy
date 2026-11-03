@@ -98,6 +98,11 @@ mode computes each bounded gene block once, updates residual mean/variance and H
 then releases it. Both modes use identical block arithmetic; summary mode never allocates
 the full residual matrix. **project decision; measured**
 
+The default `residual_dtype="float64"` is the reference path. The opt-in `"float32"`
+path uses float32 residual-block arithmetic and storage, with float64 reductions for mean
+and variance. Parameter fitting and regularization remain float64. **project decision;
+measured**
+
 ## Corrected UMI
 
 When requested, the same regularized model is inverted at one fixed library depth `n0`:
@@ -111,8 +116,9 @@ X_corrected_gc = round(max(0, mu0_g + Z_gc * sqrt(mu0_g + mu0_g**2/theta_fit_g))
 This path uses the unclipped Pearson residual and model standard deviation without the
 residual floor. `n0` defaults to the median input library size. The result is an int64
 genes-by-cells CSR matrix; excluded genes remain zero. It is produced in the residual
-gene blocks and does not require retaining the dense residual matrix. **confirmed from
-paper and official documentation; measured**
+gene blocks, does not require retaining the dense residual matrix, and always uses the
+float64 model even when residual output is float32. **confirmed from paper and official
+documentation; measured**
 
 ## Explicit exclusions
 

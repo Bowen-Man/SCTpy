@@ -30,6 +30,10 @@ All reports also contain MAE, RMSE, maximum absolute error, Pearson, and Spearma
 defined. These thresholds live in `benchmarks/correctness.py` and may change only
 prospectively.
 
+The float32 residual experiment is gated separately against the float64 path: residual,
+mean, and variance RMSE must be `<= 1e-5`, maximum error `<= 1e-3`, residual Pearson and
+variance Spearman must be `>= 0.999999`, and HVG Top 100/500 Jaccard must equal `1.0`.
+
 The committed 198 KiB R golden contains only factual numerical outputs for the synthetic
 small fixture, plus provenance. CI regenerates the counts, verifies their hash, runs the
 CPU path on CSR input, and requires exact branch masks and HVG order. Its tighter
@@ -60,6 +64,12 @@ On the 800 x 240 fixture, corrected UMI matched Level B exactly. Against Level A
 `0.9999824`, and exact fraction `0.9990199`. On the 3,200 x 240 fixture, Level B again
 matched Level A exactly; Level C had MAE `0.0009851`, RMSE `0.03164`, maximum error `2`,
 Pearson `0.9999779`, and exact fraction `0.9990229`. **measured on 2026-11-03**
+
+On the 3,200 x 240 fixture, float32 versus float64 residual RMSE was `3.51e-7` with
+maximum error `2.90e-6`; residual-variance RMSE was `3.17e-7` and Spearman
+`0.9999999992`. HVG Top 100/500/1000/2000/3000 sets were exact, while complete-rank
+Spearman was `0.9999999992`. Corrected UMI remained unchanged. Against Level A, the
+float32 residual RMSE was `2.59e-6`. **measured on 2026-11-03**
 
 The licensed real-data gate derives 3,000 cells from 10x Genomics' *10k Human PBMCs, 3'
 v3.1, Chromium X* dataset (CC BY 4.0). The source file is 39,503,734 bytes with SHA-256
@@ -96,6 +106,11 @@ benefit. Median compute times were `3.156 s` and `3.177 s`. **measured on 2026-1
 With summary output plus corrected UMI, the same fixture returned a 579,039-nonzero CSR
 matrix occupying `6.64 MiB`. Five measured runs gave `3.436 s` median compute time and
 `113.13 MiB` median peak RSS. **measured on 2026-11-03**
+
+For full residual output on the same fixture, float32 reduced the retained matrix from
+`5.86 MiB` to `2.93 MiB`. Five measured runs gave `107.26 MiB` median peak RSS and
+`3.214 s` compute time, versus `111.81 MiB` and `3.260 s` for float64. These are
+fixture/machine measurements, not a general speed claim. **measured on 2026-11-03**
 
 Minimal synthetic reproduction:
 

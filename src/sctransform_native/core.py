@@ -43,6 +43,7 @@ from .selection import (
 
 StatisticalMode = Literal["native", "r_v2", "experimental"]
 ResidualOutput = Literal["full", "summary"]
+ResidualDType = Literal["float64", "float32"]
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,7 @@ class SCTConfig:
     optimizer_gtol: float = 1e-6
     residual_block_size: int = 256
     residual_output: ResidualOutput = "full"
+    residual_dtype: ResidualDType = "float64"
     cox_reid_gene_bin_size: int | None = None
     cox_reid_batch_size: int | None = None
 
@@ -80,6 +82,7 @@ class SCTConfig:
         seed: int = 1448145,
         residual_block_size: int = 256,
         residual_output: ResidualOutput = "full",
+        residual_dtype: ResidualDType = "float64",
         cox_reid_batch_size: int | None = 64,
     ) -> SCTConfig:
         """Build the validated R-v2 compatibility configuration."""
@@ -97,6 +100,7 @@ class SCTConfig:
             theta_postprocess="moment_ratio",
             residual_block_size=residual_block_size,
             residual_output=residual_output,
+            residual_dtype=residual_dtype,
         )
 
     @property
@@ -167,6 +171,8 @@ class SCTConfig:
             raise ValueError("iteration and block sizes must be positive")
         if self.residual_output not in {"full", "summary"}:
             raise ValueError("residual_output must be 'full' or 'summary'")
+        if self.residual_dtype not in {"float64", "float32"}:
+            raise ValueError("residual_dtype must be 'float64' or 'float32'")
         if self.clip_range is not None:
             low, high = self.clip_range
             if not np.isfinite(low) or not np.isfinite(high) or low >= high:
@@ -238,6 +244,7 @@ def _residuals_and_summary(
     standard_deviation_floor: float,
     block_size: int,
     store_residuals: bool,
+    residual_dtype: ResidualDType,
     corrected_umi_depth: float | None,
 ) -> tuple[
     np.ndarray | None,
@@ -248,8 +255,12 @@ def _residuals_and_summary(
     np.ndarray,
 ]:
     genes, cells = counts_gxc.shape
+    working_dtype = np.dtype(residual_dtype)
+    working_library_size = library_size.astype(working_dtype, copy=False)
     residuals = (
-        np.full((genes, cells), np.nan, dtype=np.float64) if store_residuals else None
+        np.full((genes, cells), np.nan, dtype=working_dtype)
+        if store_residuals
+        else None
     )
     residual_mean = np.full(genes, np.nan, dtype=np.float64)
     residual_variance = np.full(genes, np.nan, dtype=np.float64)
@@ -263,26 +274,45 @@ def _residuals_and_summary(
     )
     for start in range(0, modeled_indices.size, block_size):
         indices = modeled_indices[start : start + block_size]
-        observed = dense_gene_block(counts_gxc, indices)
-        mu = np.exp(intercept[indices, None]) * library_size[None, :]
-        inverse_theta = np.zeros(indices.size, dtype=np.float64)
+        observed_float64 = dense_gene_block(counts_gxc, indices)
+        observed = observed_float64.astype(working_dtype, copy=False)
+        block_intercept = intercept[indices].astype(working_dtype, copy=False)
+        mu = np.exp(block_intercept[:, None]) * working_library_size[None, :]
+        inverse_theta = np.zeros(indices.size, dtype=working_dtype)
         finite_theta = np.isfinite(theta[indices])
-        inverse_theta[finite_theta] = 1.0 / theta[indices[finite_theta]]
+        inverse_theta[finite_theta] = 1.0 / theta[indices[finite_theta]].astype(
+            working_dtype, copy=False
+        )
         variance = mu + mu**2 * inverse_theta[:, None]
         model_standard_deviation = np.sqrt(variance)
         denominator = np.maximum(model_standard_deviation, standard_deviation_floor)
         block = (observed - mu) / denominator
         block = np.clip(block, clip_range[0], clip_range[1])
-        residual_mean[indices] = np.mean(block, axis=1)
+        residual_mean[indices] = np.mean(block, axis=1, dtype=np.float64)
         if cells > 1:
-            residual_variance[indices] = np.var(block, axis=1, ddof=1)
+            residual_variance[indices] = np.var(block, axis=1, ddof=1, dtype=np.float64)
         if residuals is not None:
             residuals[indices] = block
 
         if corrected_umi_depth is not None:
+            if working_dtype == np.dtype(np.float64):
+                corrected_mu = mu
+                corrected_standard_deviation = model_standard_deviation
+                corrected_inverse_theta = inverse_theta
+            else:
+                corrected_mu = np.exp(intercept[indices, None]) * library_size[None, :]
+                corrected_inverse_theta = np.zeros(indices.size, dtype=np.float64)
+                corrected_inverse_theta[finite_theta] = (
+                    1.0 / theta[indices[finite_theta]]
+                )
+                corrected_standard_deviation = np.sqrt(
+                    corrected_mu + corrected_mu**2 * corrected_inverse_theta[:, None]
+                )
             target_mu = np.exp(intercept[indices, None]) * corrected_umi_depth
-            target_variance = target_mu + target_mu**2 * inverse_theta[:, None]
-            pearson = (observed - mu) / model_standard_deviation
+            target_variance = (
+                target_mu + target_mu**2 * corrected_inverse_theta[:, None]
+            )
+            pearson = (observed_float64 - corrected_mu) / corrected_standard_deviation
             corrected = np.maximum(
                 np.rint(target_mu + pearson * np.sqrt(target_variance)), 0.0
             )
@@ -344,7 +374,7 @@ def fit_transform(
     batch: object | None = None,
     covariates: object | None = None,
 ) -> SCTResult:
-    """Fit the documented SCT v2 core and return float64 Pearson residuals."""
+    """Fit the documented SCT v2 core and return configured Pearson residuals."""
     total_start = perf_counter()
     timing: dict[str, float] = {}
     if corrected_umi_depth is not None and not return_corrected_umi:
@@ -596,6 +626,7 @@ def fit_transform(
         standard_deviation_floor=nonzero_median / 5.0,
         block_size=resolved_config.residual_block_size,
         store_residuals=resolved_config.residual_output == "full",
+        residual_dtype=resolved_config.residual_dtype,
         corrected_umi_depth=resolved_corrected_umi_depth,
     )
     timing["residuals_and_hvg"] = perf_counter() - stage_start

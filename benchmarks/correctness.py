@@ -22,6 +22,21 @@ THRESHOLDS: dict[str, dict[str, float]] = {
     "hvg": {"jaccard": 0.90},
 }
 
+MIXED_PRECISION_THRESHOLDS: dict[str, dict[str, float]] = {
+    "residual": {
+        "rmse": 1.0e-5,
+        "max_absolute_error": 1.0e-3,
+        "pearson": 0.999999,
+    },
+    "residual_mean": {"rmse": 1.0e-5, "max_absolute_error": 1.0e-3},
+    "residual_variance": {
+        "rmse": 1.0e-5,
+        "max_absolute_error": 1.0e-3,
+        "spearman": 0.999999,
+    },
+    "hvg": {"jaccard": 1.0},
+}
+
 
 def numeric_metrics(
     left: np.ndarray, right: np.ndarray
