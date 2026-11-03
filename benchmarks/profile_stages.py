@@ -16,7 +16,7 @@ import numpy as np
 import psutil
 from scipy import sparse
 
-from sctransform_native import SCTConfig, SCTResult, fit_transform
+from sctpy import SCTConfig, SCTResult, fit_transform
 
 from ._common import load_fixture, load_manifest, matrix_summary, write_json
 

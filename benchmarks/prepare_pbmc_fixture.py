@@ -10,7 +10,7 @@ import numpy as np
 from scipy import io as scipy_io
 from scipy import sparse
 
-from sctransform_native._matrix import matrix_statistics
+from sctpy._matrix import matrix_statistics
 
 from ._common import count_sha256, save_sparse_fixture, write_json
 

@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from benchmarks import export_reference
-from sctransform_native import SelectionManifest
+from sctpy import SelectionManifest
 
 
 def test_reference_receives_complete_ordered_manifest(monkeypatch, tmp_path):

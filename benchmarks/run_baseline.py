@@ -22,7 +22,7 @@ import numpy as np
 import psutil
 from scipy import sparse
 
-from sctransform_native import SCTConfig, SCTResult, fit_transform
+from sctpy import SCTConfig, SCTResult, fit_transform
 
 from ._common import load_fixture, load_manifest, matrix_summary, write_json
 
@@ -436,7 +436,7 @@ def main() -> None:
         "python": sys.version,
         "versions": {
             name: importlib.metadata.version(name)
-            for name in ("numpy", "scipy", "sctransform-native")
+            for name in ("numpy", "scipy", "sctpy")
         },
         "compute_warmups_per_process": args.compute_warmups,
         "platform": sys.platform,

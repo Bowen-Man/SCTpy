@@ -16,13 +16,13 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 
-from sctransform_native._fit import (
+from sctpy._fit import (
     _DISPERSION_CEILING,
     _DISPERSION_FLOOR,
     _cox_reid_score_batch,
     offset_intercept,
 )
-from sctransform_native._gpu import _dispersion_roots_cupy
+from sctpy._gpu import _dispersion_roots_cupy
 
 from ._common import load_fixture, write_json
 from .correctness import numeric_metrics

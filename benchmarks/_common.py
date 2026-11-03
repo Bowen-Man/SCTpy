@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 
-from sctransform_native import SelectionManifest
+from sctpy import SelectionManifest
 
 
 def load_fixture(

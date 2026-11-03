@@ -8,7 +8,7 @@ from scipy import sparse
 from benchmarks._common import count_sha256, load_fixture, save_sparse_fixture
 from benchmarks.freeze_oracle_selection import freeze_oracle_selection
 from benchmarks.generate_fixture import generate_counts
-from sctransform_native import SelectionManifest
+from sctpy import SelectionManifest
 
 
 def test_fixture_generator_is_deterministic_and_positive_by_cell() -> None:

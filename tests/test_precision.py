@@ -8,7 +8,7 @@ from benchmarks.correctness import (
     numeric_metrics,
 )
 from benchmarks.generate_fixture import generate_counts
-from sctransform_native import SCTConfig, fit_transform
+from sctpy import SCTConfig, fit_transform
 
 
 def test_float32_residual_path_passes_preregistered_gate() -> None:

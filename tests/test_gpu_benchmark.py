@@ -4,7 +4,7 @@ from benchmarks.gpu_cox_reid import (
     dispersion_roots_numpy,
     prepare_root_inputs,
 )
-from sctransform_native._fit import fit_cox_reid_offset_batch
+from sctpy._fit import fit_cox_reid_offset_batch
 
 
 def test_gpu_benchmark_cpu_root_matches_validated_batch_fit() -> None:

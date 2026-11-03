@@ -5,8 +5,8 @@ import pytest
 from numpy.testing import assert_allclose, assert_array_equal
 from scipy import sparse
 
-from sctransform_native import SCTConfig, fit_transform
-from sctransform_native._matrix import MatrixOrientation
+from sctpy import SCTConfig, fit_transform
+from sctpy._matrix import MatrixOrientation
 
 
 def _overdispersed_fixture() -> tuple[np.ndarray, tuple[str, ...], tuple[str, ...]]:

@@ -7,7 +7,7 @@ from .core import SCTConfig, SCTResult, fit_transform
 from .selection import SelectionManifest, create_selection_manifest
 
 try:
-    __version__ = version("sctransform-native")
+    __version__ = version("sctpy")
 except PackageNotFoundError:  # pragma: no cover - only an unpackaged source tree
     __version__ = "0+unknown"
 

@@ -8,8 +8,8 @@ import numpy as np
 from scipy import io as scipy_io
 from scipy import sparse
 
-from sctransform_native import create_selection_manifest
-from sctransform_native._matrix import matrix_statistics
+from sctpy import create_selection_manifest
+from sctpy._matrix import matrix_statistics
 
 from ._common import count_sha256, write_json
 

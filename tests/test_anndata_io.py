@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from sctransform_native import SCTConfig, fit_transform_anndata, write_anndata
+from sctpy import SCTConfig, fit_transform_anndata, write_anndata
 
 ad = pytest.importorskip("anndata")
 

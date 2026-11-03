@@ -5,13 +5,13 @@ import pytest
 from numpy.testing import assert_allclose, assert_array_equal
 from scipy import sparse
 
-from sctransform_native import (
+from sctpy import (
     SCTConfig,
     SelectionManifest,
     create_selection_manifest,
     fit_transform,
 )
-from sctransform_native.selection import _inverse_density_weights
+from sctpy.selection import _inverse_density_weights
 
 
 def test_manifest_is_reproducible_and_json_round_trips() -> None:

@@ -1,7 +1,9 @@
-# sctransform-native
+# SCTpy
 
-Independent NumPy/SciPy implementation of the documented SCTransform v2 model. The
+SCTpy is an independent NumPy/SciPy implementation of the SCTransform v2 model. The
 project is an alpha (`0.1.0a1`): it implements a validated core, not the historical R API.
+
+Previously named `sctransform-native`; the package and import name are now `sctpy`.
 
 The runtime has no R dependency, reference binary, or project-owned compiled extension.
 GPL implementations are external numerical oracles only; their source expression, tests,
@@ -30,7 +32,7 @@ python -m pip install -e .
 ```
 
 ```python
-from sctransform_native import SCTConfig, fit_transform
+from sctpy import SCTConfig, fit_transform
 
 result = fit_transform(
     counts_genes_by_cells,
