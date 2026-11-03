@@ -7,6 +7,7 @@ import pstats
 import threading
 import time
 import tracemalloc
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -79,6 +80,9 @@ def main() -> None:
         choices=("none", "moment_ratio"),
         default="none",
     )
+    parser.add_argument(
+        "--residual-output", choices=("full", "summary"), default="full"
+    )
     args = parser.parse_args()
 
     counts, genes, cells = load_fixture(args.fixture)
@@ -96,6 +100,7 @@ def main() -> None:
         regularization_support=args.regularization_support,
         theta_postprocess=args.theta_postprocess,
         residual_block_size=args.block_size,
+        residual_output=args.residual_output,
     )
     baseline_rss = psutil.Process().memory_info().rss
     rss_samples = [baseline_rss]
@@ -160,7 +165,7 @@ def main() -> None:
     )
     report = {
         "schema_version": 1,
-        "generated_on": "2026-11-02",
+        "generated_on": datetime.now(timezone.utc).date().isoformat(),
         "model": {
             "fit_method": args.fit_method,
             "cox_reid_gene_bin_size": args.cox_reid_gene_bin_size,
@@ -169,6 +174,7 @@ def main() -> None:
             "regularization_method": args.regularization_method,
             "regularization_support": args.regularization_support,
             "theta_postprocess": args.theta_postprocess,
+            "residual_output": args.residual_output,
         },
         "wall_seconds": wall_seconds,
         "stage_seconds": result.timing,
@@ -178,7 +184,11 @@ def main() -> None:
         "python_tracemalloc_peak_bytes": traced_peak,
         "matrices": {
             "input_counts": matrix_summary(input_matrix),
-            "dense_residual_output": matrix_summary(result.residuals),
+            "dense_residual_output": (
+                matrix_summary(result.residuals)
+                if result.residuals is not None
+                else None
+            ),
             "cox_reid_gene_block": {
                 "shape": cox_reid_block_shape,
                 "dtype": "float64",

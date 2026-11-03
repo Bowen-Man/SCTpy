@@ -102,6 +102,34 @@ def test_cpu_core_produces_complete_float64_result() -> None:
     )
 
 
+def test_summary_residual_output_matches_full_without_retaining_matrix() -> None:
+    counts, genes, cells = _overdispersed_fixture()
+    full = fit_transform(
+        sparse.csr_matrix(counts),
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig.r_v2(n_genes=None, n_cells=None, residual_block_size=3),
+    )
+    summary = fit_transform(
+        sparse.csr_matrix(counts),
+        gene_names=genes,
+        cell_names=cells,
+        config=SCTConfig.r_v2(
+            n_genes=None,
+            n_cells=None,
+            residual_block_size=3,
+            residual_output="summary",
+        ),
+        selection=full.selection,
+    )
+
+    assert summary.residuals is None
+    assert_allclose(summary.residual_mean, full.residual_mean, equal_nan=True)
+    assert_allclose(summary.residual_variance, full.residual_variance, equal_nan=True)
+    assert_array_equal(summary.hvg_order, full.hvg_order)
+    assert_array_equal(summary.hvg_rank, full.hvg_rank)
+
+
 def test_sct_v2_dispersion_regularization_is_explicit() -> None:
     counts, genes, cells = _overdispersed_fixture()
     native = fit_transform(

@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import tracemalloc
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,7 @@ def _worker(
     regularization_method: str,
     regularization_support: str,
     theta_postprocess: str,
+    residual_output: str,
     trace_python_allocations: bool,
 ) -> dict[str, Any]:
     process = psutil.Process()
@@ -94,6 +96,7 @@ def _worker(
             regularization_method=regularization_method,
             regularization_support=regularization_support,
             theta_postprocess=theta_postprocess,
+            residual_output=residual_output,
         ),
         selection=manifest,
     )
@@ -117,7 +120,9 @@ def _worker(
         "max_process_threads": max(thread_counts),
         "stage_seconds": result.timing,
         "input": matrix_summary(input_matrix),
-        "residuals": matrix_summary(result.residuals),
+        "residuals": (
+            matrix_summary(result.residuals) if result.residuals is not None else None
+        ),
         "converged_gene_count": int(np.count_nonzero(result.converged)),
         "eligible_gene_count": int(np.count_nonzero(result.eligible_gene)),
     }
@@ -203,6 +208,9 @@ def main() -> None:
         choices=("none", "moment_ratio"),
         default="none",
     )
+    parser.add_argument(
+        "--residual-output", choices=("full", "summary"), default="full"
+    )
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
@@ -220,6 +228,7 @@ def main() -> None:
                     regularization_method=args.regularization_method,
                     regularization_support=args.regularization_support,
                     theta_postprocess=args.theta_postprocess,
+                    residual_output=args.residual_output,
                     trace_python_allocations=args.trace_python_allocations,
                 )
             )
@@ -254,6 +263,8 @@ def main() -> None:
         args.regularization_support,
         "--theta-postprocess",
         args.theta_postprocess,
+        "--residual-output",
+        args.residual_output,
     ]
     if args.cox_reid_gene_bin_size is not None:
         command.extend(["--cox-reid-gene-bin-size", str(args.cox_reid_gene_bin_size)])
@@ -281,7 +292,7 @@ def main() -> None:
 
     report = {
         "schema_version": 1,
-        "generated_on": "2026-11-02",
+        "generated_on": datetime.now(timezone.utc).date().isoformat(),
         "python": sys.version,
         "platform": sys.platform,
         "processor": platform.processor(),
@@ -297,6 +308,7 @@ def main() -> None:
             "regularization_method": args.regularization_method,
             "regularization_support": args.regularization_support,
             "theta_postprocess": args.theta_postprocess,
+            "residual_output": args.residual_output,
         },
         "blas_configuration": _blas_report(),
         "warmups": warmup_runs,

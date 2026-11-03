@@ -41,6 +41,7 @@ from .selection import (
 )
 
 StatisticalMode = Literal["native", "r_v2", "experimental"]
+ResidualOutput = Literal["full", "summary"]
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ class SCTConfig:
     optimizer_ftol: float = 1e-10
     optimizer_gtol: float = 1e-6
     residual_block_size: int = 256
+    residual_output: ResidualOutput = "full"
     cox_reid_gene_bin_size: int | None = None
     cox_reid_batch_size: int | None = None
 
@@ -76,6 +78,7 @@ class SCTConfig:
         n_cells: int | None = 2000,
         seed: int = 1448145,
         residual_block_size: int = 256,
+        residual_output: ResidualOutput = "full",
         cox_reid_batch_size: int | None = 64,
     ) -> SCTConfig:
         """Build the validated R-v2 compatibility configuration."""
@@ -92,6 +95,7 @@ class SCTConfig:
             regularization_support="clamp",
             theta_postprocess="moment_ratio",
             residual_block_size=residual_block_size,
+            residual_output=residual_output,
         )
 
     @property
@@ -160,6 +164,8 @@ class SCTConfig:
             raise ValueError("theta bounds must satisfy 0 < theta_min < theta_max")
         if self.optimizer_maxiter < 1 or self.residual_block_size < 1:
             raise ValueError("iteration and block sizes must be positive")
+        if self.residual_output not in {"full", "summary"}:
+            raise ValueError("residual_output must be 'full' or 'summary'")
         if self.clip_range is not None:
             low, high = self.clip_range
             if not np.isfinite(low) or not np.isfinite(high) or low >= high:
@@ -192,7 +198,7 @@ class SCTResult:
     fit_iterations: np.ndarray
     fit_message: tuple[str, ...]
     fit_status: tuple[str, ...]
-    residuals: np.ndarray
+    residuals: np.ndarray | None
     residual_mean: np.ndarray
     residual_variance: np.ndarray
     hvg_order: np.ndarray
@@ -228,9 +234,14 @@ def _residuals_and_summary(
     clip_range: tuple[float, float],
     standard_deviation_floor: float,
     block_size: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    store_residuals: bool,
+) -> tuple[np.ndarray | None, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     genes, cells = counts_gxc.shape
-    residuals = np.full((genes, cells), np.nan, dtype=np.float64)
+    residuals = (
+        np.full((genes, cells), np.nan, dtype=np.float64) if store_residuals else None
+    )
+    residual_mean = np.full(genes, np.nan, dtype=np.float64)
+    residual_variance = np.full(genes, np.nan, dtype=np.float64)
     modeled_indices = np.flatnonzero(
         eligible & np.isfinite(intercept) & ~np.isnan(theta) & (theta > 0)
     )
@@ -244,16 +255,12 @@ def _residuals_and_summary(
         variance = mu + mu**2 * inverse_theta[:, None]
         denominator = np.maximum(np.sqrt(variance), standard_deviation_floor)
         block = (observed - mu) / denominator
-        residuals[indices] = np.clip(block, clip_range[0], clip_range[1])
-
-    residual_mean = np.full(genes, np.nan, dtype=np.float64)
-    residual_variance = np.full(genes, np.nan, dtype=np.float64)
-    if modeled_indices.size:
-        residual_mean[modeled_indices] = np.mean(residuals[modeled_indices], axis=1)
+        block = np.clip(block, clip_range[0], clip_range[1])
+        residual_mean[indices] = np.mean(block, axis=1)
         if cells > 1:
-            residual_variance[modeled_indices] = np.var(
-                residuals[modeled_indices], axis=1, ddof=1
-            )
+            residual_variance[indices] = np.var(block, axis=1, ddof=1)
+        if residuals is not None:
+            residuals[indices] = block
 
     valid_hvg = modeled_indices[np.isfinite(residual_variance[modeled_indices])]
     order_within = np.lexsort((valid_hvg, -residual_variance[valid_hvg]))
@@ -516,6 +523,7 @@ def fit_transform(
         clip_range=clip_range,
         standard_deviation_floor=nonzero_median / 5.0,
         block_size=resolved_config.residual_block_size,
+        store_residuals=resolved_config.residual_output == "full",
     )
     timing["residuals_and_hvg"] = perf_counter() - stage_start
     timing["total"] = perf_counter() - total_start
