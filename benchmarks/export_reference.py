@@ -9,8 +9,6 @@ from pathlib import Path
 import numpy as np
 from scipy import sparse
 
-from sctransform_native._matrix import matrix_statistics
-
 from ._common import count_sha256, load_fixture, load_manifest
 
 
@@ -36,23 +34,10 @@ def main() -> None:
 
     counts, genes, cells = load_fixture(args.fixture)
     manifest = load_manifest(args.manifest)
-    gene_lookup = {name: index for index, name in enumerate(genes)}
-    selected_gene_indices = np.asarray(
-        [gene_lookup[name] for name in manifest.selected_gene_names], dtype=np.int64
-    )
-    selected_cell_indices = np.asarray(manifest.selected_cell_indices, dtype=np.int64)
-    selected_counts = counts[selected_gene_indices][:, selected_cell_indices]
-    selected_mean, selected_variance, _, _ = matrix_statistics(selected_counts)
-    poisson = (selected_mean < 0.001) | (selected_variance <= selected_mean)
-    reference_fit_genes = tuple(
-        name
-        for name, is_poisson in zip(manifest.selected_gene_names, poisson, strict=True)
-        if not is_poisson
-    )
     reference_manifest = ReferenceSelectionManifest(
         seed=manifest.seed,
         cells=manifest.selected_cell_names,
-        genes=reference_fit_genes,
+        genes=manifest.selected_gene_names,
     )
     result = sctransform(
         sparse.csr_matrix(counts),
@@ -72,6 +57,12 @@ def main() -> None:
         raise RuntimeError("reference did not return corrected UMI counts")
     residual_genes = result.genes[result.residual_gene_indices]
     fit_genes = result.genes[result.fit_gene_indices]
+    fit_cells = result.cells[result.fit_cell_indices]
+    if (
+        tuple(fit_genes) != manifest.selected_gene_names
+        or tuple(fit_cells) != manifest.selected_cell_names
+    ):
+        raise RuntimeError("reference did not replay the ordered selection manifest")
     hvg_genes = result.genes[result.hvg_indices]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
@@ -110,9 +101,8 @@ def main() -> None:
                     args.manifest.read_bytes()
                 ).hexdigest(),
                 "selection_adapter": (
-                    "same persisted cells and candidate genes; remove genes selected by "
-                    "the documented v2 Poisson rule because the Level-B public manifest "
-                    "accepts only NB fit genes"
+                    "replay persisted gene/cell names in their original order; "
+                    "no additional gene filtering"
                 ),
                 "timing_seconds": result.timing,
             },
