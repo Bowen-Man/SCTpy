@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import Literal
 
 import numpy as np
+from scipy import sparse
 
 from ._fit import (
     FitMethod,
@@ -199,6 +200,8 @@ class SCTResult:
     fit_message: tuple[str, ...]
     fit_status: tuple[str, ...]
     residuals: np.ndarray | None
+    corrected_umi: sparse.csr_matrix | None
+    corrected_umi_depth: float | None
     residual_mean: np.ndarray
     residual_variance: np.ndarray
     hvg_order: np.ndarray
@@ -235,13 +238,26 @@ def _residuals_and_summary(
     standard_deviation_floor: float,
     block_size: int,
     store_residuals: bool,
-) -> tuple[np.ndarray | None, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    corrected_umi_depth: float | None,
+) -> tuple[
+    np.ndarray | None,
+    sparse.csr_matrix | None,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
     genes, cells = counts_gxc.shape
     residuals = (
         np.full((genes, cells), np.nan, dtype=np.float64) if store_residuals else None
     )
     residual_mean = np.full(genes, np.nan, dtype=np.float64)
     residual_variance = np.full(genes, np.nan, dtype=np.float64)
+    corrected_columns: list[np.ndarray] = []
+    corrected_values: list[np.ndarray] = []
+    corrected_row_nnz = (
+        np.zeros(genes, dtype=np.int64) if corrected_umi_depth is not None else None
+    )
     modeled_indices = np.flatnonzero(
         eligible & np.isfinite(intercept) & ~np.isnan(theta) & (theta > 0)
     )
@@ -253,7 +269,8 @@ def _residuals_and_summary(
         finite_theta = np.isfinite(theta[indices])
         inverse_theta[finite_theta] = 1.0 / theta[indices[finite_theta]]
         variance = mu + mu**2 * inverse_theta[:, None]
-        denominator = np.maximum(np.sqrt(variance), standard_deviation_floor)
+        model_standard_deviation = np.sqrt(variance)
+        denominator = np.maximum(model_standard_deviation, standard_deviation_floor)
         block = (observed - mu) / denominator
         block = np.clip(block, clip_range[0], clip_range[1])
         residual_mean[indices] = np.mean(block, axis=1)
@@ -262,12 +279,56 @@ def _residuals_and_summary(
         if residuals is not None:
             residuals[indices] = block
 
+        if corrected_umi_depth is not None:
+            target_mu = np.exp(intercept[indices, None]) * corrected_umi_depth
+            target_variance = target_mu + target_mu**2 * inverse_theta[:, None]
+            pearson = (observed - mu) / model_standard_deviation
+            corrected = np.maximum(
+                np.rint(target_mu + pearson * np.sqrt(target_variance)), 0.0
+            )
+            if not np.all(np.isfinite(corrected)):
+                raise OverflowError(
+                    "corrected UMI calculation produced non-finite values"
+                )
+            if np.any(corrected > np.iinfo(np.int64).max):
+                raise OverflowError("corrected UMI values exceed int64 range")
+            corrected_block = sparse.csr_matrix(corrected.astype(np.int64))
+            assert corrected_row_nnz is not None
+            corrected_row_nnz[indices] = np.diff(corrected_block.indptr)
+            corrected_columns.append(corrected_block.indices)
+            corrected_values.append(corrected_block.data)
+
     valid_hvg = modeled_indices[np.isfinite(residual_variance[modeled_indices])]
     order_within = np.lexsort((valid_hvg, -residual_variance[valid_hvg]))
     hvg_order = valid_hvg[order_within]
     hvg_rank = np.full(genes, -1, dtype=np.int64)
     hvg_rank[hvg_order] = np.arange(hvg_order.size, dtype=np.int64)
-    return residuals, residual_mean, residual_variance, hvg_order, hvg_rank
+    corrected_umi: sparse.csr_matrix | None = None
+    if corrected_umi_depth is not None:
+        assert corrected_row_nnz is not None
+        if corrected_values:
+            indptr = np.empty(genes + 1, dtype=np.int64)
+            indptr[0] = 0
+            np.cumsum(corrected_row_nnz, out=indptr[1:])
+            corrected_umi = sparse.csr_matrix(
+                (
+                    np.concatenate(corrected_values),
+                    np.concatenate(corrected_columns),
+                    indptr,
+                ),
+                shape=(genes, cells),
+                dtype=np.int64,
+            )
+        else:
+            corrected_umi = sparse.csr_matrix((genes, cells), dtype=np.int64)
+    return (
+        residuals,
+        corrected_umi,
+        residual_mean,
+        residual_variance,
+        hvg_order,
+        hvg_rank,
+    )
 
 
 def fit_transform(
@@ -279,14 +340,19 @@ def fit_transform(
     config: SCTConfig | None = None,
     selection: SelectionManifest | None = None,
     return_corrected_umi: bool = False,
+    corrected_umi_depth: float | None = None,
     batch: object | None = None,
     covariates: object | None = None,
 ) -> SCTResult:
     """Fit the documented SCT v2 core and return float64 Pearson residuals."""
     total_start = perf_counter()
     timing: dict[str, float] = {}
-    if return_corrected_umi:
-        raise NotImplementedError("corrected UMI counts are not implemented in 0.1.0a1")
+    if corrected_umi_depth is not None and not return_corrected_umi:
+        raise ValueError("corrected_umi_depth requires return_corrected_umi=True")
+    if corrected_umi_depth is not None and (
+        not np.isfinite(corrected_umi_depth) or corrected_umi_depth <= 0.0
+    ):
+        raise ValueError("corrected_umi_depth must be finite and positive")
     if batch is not None:
         raise NotImplementedError("batch models are not implemented in 0.1.0a1")
     if covariates is not None:
@@ -507,9 +573,15 @@ def fit_transform(
         else (-float(np.sqrt(cells)), float(np.sqrt(cells)))
     )
     nonzero_median = global_nonzero_median(counts_gxc)
+    resolved_corrected_umi_depth = (
+        float(np.median(library_size))
+        if return_corrected_umi and corrected_umi_depth is None
+        else corrected_umi_depth
+    )
     stage_start = perf_counter()
     (
         residuals,
+        corrected_umi,
         residual_mean,
         residual_variance,
         hvg_order,
@@ -524,6 +596,7 @@ def fit_transform(
         standard_deviation_floor=nonzero_median / 5.0,
         block_size=resolved_config.residual_block_size,
         store_residuals=resolved_config.residual_output == "full",
+        corrected_umi_depth=resolved_corrected_umi_depth,
     )
     timing["residuals_and_hvg"] = perf_counter() - stage_start
     timing["total"] = perf_counter() - total_start
@@ -554,6 +627,8 @@ def fit_transform(
         fit_message=tuple(str(value) for value in fit_message),
         fit_status=tuple(str(value) for value in status),
         residuals=residuals,
+        corrected_umi=corrected_umi,
+        corrected_umi_depth=resolved_corrected_umi_depth,
         residual_mean=residual_mean,
         residual_variance=residual_variance,
         hvg_order=hvg_order,

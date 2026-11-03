@@ -59,6 +59,7 @@ def _worker(
     regularization_support: str,
     theta_postprocess: str,
     residual_output: str,
+    return_corrected_umi: bool,
     trace_python_allocations: bool,
 ) -> dict[str, Any]:
     process = psutil.Process()
@@ -99,6 +100,7 @@ def _worker(
             residual_output=residual_output,
         ),
         selection=manifest,
+        return_corrected_umi=return_corrected_umi,
     )
     compute_wall = time.perf_counter() - compute_start
     end_to_end_wall = time.perf_counter() - wall_start
@@ -122,6 +124,11 @@ def _worker(
         "input": matrix_summary(input_matrix),
         "residuals": (
             matrix_summary(result.residuals) if result.residuals is not None else None
+        ),
+        "corrected_umi": (
+            matrix_summary(result.corrected_umi)
+            if result.corrected_umi is not None
+            else None
         ),
         "converged_gene_count": int(np.count_nonzero(result.converged)),
         "eligible_gene_count": int(np.count_nonzero(result.eligible_gene)),
@@ -211,6 +218,7 @@ def main() -> None:
     parser.add_argument(
         "--residual-output", choices=("full", "summary"), default="full"
     )
+    parser.add_argument("--corrected-umi", action="store_true")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
@@ -229,6 +237,7 @@ def main() -> None:
                     regularization_support=args.regularization_support,
                     theta_postprocess=args.theta_postprocess,
                     residual_output=args.residual_output,
+                    return_corrected_umi=args.corrected_umi,
                     trace_python_allocations=args.trace_python_allocations,
                 )
             )
@@ -272,6 +281,8 @@ def main() -> None:
         command.extend(["--cox-reid-batch-size", str(args.cox_reid_batch_size)])
     if args.trace_python_allocations:
         command.append("--trace-python-allocations")
+    if args.corrected_umi:
+        command.append("--corrected-umi")
     for index in range(args.warmups + args.repeats):
         process_start = time.perf_counter()
         completed = subprocess.run(
@@ -309,6 +320,7 @@ def main() -> None:
             "regularization_support": args.regularization_support,
             "theta_postprocess": args.theta_postprocess,
             "residual_output": args.residual_output,
+            "corrected_umi": args.corrected_umi,
         },
         "blas_configuration": _blas_report(),
         "warmups": warmup_runs,

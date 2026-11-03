@@ -15,12 +15,12 @@ comments, structure, and binaries are not copied or shipped.
 - v2 fixed-slope offset fitting, theta estimation, Poisson genes, regularization,
   Pearson residuals, clipping, residual variance, and HVG ranking;
 - block-streamed residual summaries and HVG ranking without retaining a dense matrix;
+- corrected UMI counts at a fixed depth, returned as genes-by-cells CSR;
 - a non-mutating AnnData adapter for cells-by-genes CPU data;
 - float64 reference arithmetic.
 
-Corrected UMI counts, batches, additional covariates, v1 compatibility, float32 fitting,
-and a package GPU backend are not implemented. Unsupported behavior is not approximated
-silently.
+Batches, additional covariates, v1 compatibility, float32 fitting, and a package GPU
+backend are not implemented. Unsupported behavior is not approximated silently.
 
 ## Quickstart
 
@@ -37,9 +37,11 @@ result = fit_transform(
     cell_names=cell_names,
     matrix_orientation="genes_by_cells",
     config=SCTConfig.r_v2(seed=1448145),
+    return_corrected_umi=True,
 )
 
 residuals = result.residuals
+corrected_umi = result.corrected_umi
 hvg_2000 = result.highly_variable_genes(2000)
 ```
 
@@ -48,6 +50,8 @@ the native research defaults; mixed configurations are labelled `experimental`. 
 input remains sparse during validation, selection, and reductions. Residuals are computed
 in bounded gene blocks. Set `residual_output="summary"` in the configuration to retain
 only residual mean, variance, and HVG ranks; `result.residuals` is then `None`.
+Corrected UMI output remains sparse and defaults to the median input library size;
+`corrected_umi_depth=` selects another positive fixed depth.
 
 Install the optional AnnData adapter dependency with:
 

@@ -83,6 +83,7 @@ def main() -> None:
     parser.add_argument(
         "--residual-output", choices=("full", "summary"), default="full"
     )
+    parser.add_argument("--corrected-umi", action="store_true")
     args = parser.parse_args()
 
     counts, genes, cells = load_fixture(args.fixture)
@@ -119,6 +120,7 @@ def main() -> None:
         cell_names=cells,
         config=config,
         selection=manifest,
+        return_corrected_umi=args.corrected_umi,
     )
     profile.disable()
     wall_seconds = time.perf_counter() - wall_start
@@ -175,6 +177,7 @@ def main() -> None:
             "regularization_support": args.regularization_support,
             "theta_postprocess": args.theta_postprocess,
             "residual_output": args.residual_output,
+            "corrected_umi": args.corrected_umi,
         },
         "wall_seconds": wall_seconds,
         "stage_seconds": result.timing,
@@ -187,6 +190,11 @@ def main() -> None:
             "dense_residual_output": (
                 matrix_summary(result.residuals)
                 if result.residuals is not None
+                else None
+            ),
+            "sparse_corrected_umi_output": (
+                matrix_summary(result.corrected_umi)
+                if result.corrected_umi is not None
                 else None
             ),
             "cox_reid_gene_block": {

@@ -64,9 +64,12 @@ def main() -> None:
             fit_genes=None,
             features=len(genes),
             output="full",
+            return_corrected_umi=True,
         ),
         selection_manifest=reference_manifest,
     )
+    if result.corrected_umi is None:
+        raise RuntimeError("reference did not return corrected UMI counts")
     residual_genes = result.genes[result.residual_gene_indices]
     fit_genes = result.genes[result.fit_gene_indices]
     hvg_genes = result.genes[result.hvg_indices]
@@ -89,6 +92,10 @@ def main() -> None:
         fit_gene_indices=result.fit_gene_indices,
         fit_cell_indices=result.fit_cell_indices,
         poisson_genes=result.genes[np.isinf(result.theta)],
+        corrected_umi_data=result.corrected_umi.data,
+        corrected_umi_indices=result.corrected_umi.indices,
+        corrected_umi_indptr=result.corrected_umi.indptr,
+        corrected_umi_shape=result.corrected_umi.shape,
     )
     args.output.with_suffix(".provenance.json").write_text(
         json.dumps(

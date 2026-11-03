@@ -4,7 +4,11 @@ import numpy as np
 from scipy import sparse
 
 from benchmarks._common import count_sha256
-from benchmarks.correctness import numeric_mask_metrics, numeric_metrics
+from benchmarks.correctness import (
+    numeric_mask_metrics,
+    numeric_metrics,
+    sparse_numeric_metrics,
+)
 from benchmarks.generate_fixture import generate_counts
 from sctransform_native import SCTConfig, SelectionManifest, fit_transform
 
@@ -58,6 +62,7 @@ def test_r_v2_small_frozen_correctness_gate() -> None:
             cell_names=cell_names,
             config=SCTConfig.r_v2(n_genes=None, n_cells=None, seed=20261102),
             selection=selection,
+            return_corrected_umi=True,
         )
 
         eligible_indices = np.flatnonzero(result.eligible_gene)
@@ -109,6 +114,21 @@ def test_r_v2_small_frozen_correctness_gate() -> None:
             rmse=1e-4,
             maximum=1e-3,
         )
+        expected_corrected = sparse.csr_matrix(
+            (
+                golden["corrected_umi_data"],
+                golden["corrected_umi_indices"],
+                golden["corrected_umi_indptr"],
+            ),
+            shape=tuple(golden["corrected_umi_shape"]),
+        )
+        assert result.corrected_umi is not None
+        corrected_metrics = sparse_numeric_metrics(
+            result.corrected_umi[eligible_indices], expected_corrected
+        )
+        assert float(corrected_metrics["mae"]) <= 0.01
+        assert float(corrected_metrics["max_absolute_error"]) <= 2.0
+        assert float(corrected_metrics["exact_fraction"]) >= 0.99
 
         assert result.highly_variable_genes(len(eligible_indices)) == _names(
             golden["hvg_genes"]

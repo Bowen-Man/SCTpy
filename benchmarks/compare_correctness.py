@@ -10,6 +10,7 @@ from typing import Any
 
 import numpy as np
 from scipy import sparse
+from scipy.io import mmread
 
 from sctransform_native import SCTConfig, fit_transform
 from sctransform_native._fit import theta_moment_ratio_mask
@@ -24,6 +25,7 @@ from .correctness import (
     numeric_mask_metrics,
     numeric_metrics,
     relative_error_metrics,
+    sparse_numeric_metrics,
     top_absolute_errors,
     top_row_rmse,
 )
@@ -73,6 +75,13 @@ def load_r_oracle(path: Path) -> dict[str, Any]:
             else None
         ),
     }
+    corrected_path = path / "corrected_umi.mtx"
+    if corrected_path.exists():
+        try:
+            corrected = mmread(corrected_path, spmatrix=True)
+        except TypeError:  # Older SciPy releases lack the explicit return option.
+            corrected = mmread(corrected_path)
+        oracle["corrected_umi"] = sparse.csr_matrix(corrected)
     oracle["raw_infinite_theta_genes"] = np.asarray(fit_genes)[
         np.isinf(oracle["raw_theta"])
     ]
@@ -88,6 +97,15 @@ def load_reference(path: Path) -> dict[str, Any]:
     reference["fit_cells"] = np.asarray(reference["cells"])[
         np.asarray(reference["fit_cell_indices"], dtype=np.int64)
     ]
+    if "corrected_umi_data" in reference:
+        reference["corrected_umi"] = sparse.csr_matrix(
+            (
+                reference["corrected_umi_data"],
+                reference["corrected_umi_indices"],
+                reference["corrected_umi_indptr"],
+            ),
+            shape=tuple(reference["corrected_umi_shape"]),
+        )
     return reference
 
 
@@ -111,6 +129,20 @@ def _aligned(
         np.asarray(left[field])[[left_lookup[name] for name in common]],
         np.asarray(right[field])[[right_lookup[name] for name in common]],
         common,
+    )
+
+
+def _aligned_sparse(
+    left: dict[str, Any], right: dict[str, Any], *, field: str
+) -> tuple[sparse.csr_matrix, sparse.csr_matrix]:
+    left_names = tuple(str(value) for value in left["genes"])
+    right_names = tuple(str(value) for value in right["genes"])
+    right_lookup = _indices(right_names)
+    common = tuple(name for name in left_names if name in right_lookup)
+    left_lookup = _indices(left_names)
+    return (
+        sparse.csr_matrix(left[field])[[left_lookup[name] for name in common]],
+        sparse.csr_matrix(right[field])[[right_lookup[name] for name in common]],
     )
 
 
@@ -178,6 +210,15 @@ def compare_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
         residual_genes, left_residuals, right_residuals
     )
     report["residuals"] = residual_metrics
+    if "corrected_umi" in left and "corrected_umi" in right:
+        left_corrected, right_corrected = _aligned_sparse(
+            left, right, field="corrected_umi"
+        )
+        corrected_metrics = sparse_numeric_metrics(left_corrected, right_corrected)
+        corrected_metrics["gate"] = gate_metrics(
+            corrected_metrics, THRESHOLDS["corrected_umi"]
+        )
+        report["corrected_umi"] = corrected_metrics
     poisson_metrics = {
         "jaccard": jaccard(left["poisson_genes"], right["poisson_genes"])
     }
@@ -249,7 +290,12 @@ def native_result(
             theta_moment_ratio_threshold=THETA_MOMENT_RATIO_THRESHOLD,
         ),
         selection=manifest,
+        return_corrected_umi=True,
     )
+    if result.residuals is None or result.corrected_umi is None:
+        raise RuntimeError(
+            "correctness export requires full residual and corrected UMI"
+        )
     eligible_indices = np.flatnonzero(result.eligible_gene)
     fit_indices = np.flatnonzero(result.selected_gene & ~result.poisson_gene)
     selected_indices = np.flatnonzero(result.selected_gene)
@@ -291,6 +337,7 @@ def native_result(
                 fit_indices[moment_ratio]
             ],
             "residuals": result.residuals[eligible_indices],
+            "corrected_umi": result.corrected_umi[eligible_indices],
             "residual_mean": result.residual_mean[eligible_indices],
             "residual_variance": result.residual_variance[eligible_indices],
             "hvg_genes": np.asarray(result.gene_names)[result.hvg_order],
@@ -451,6 +498,7 @@ def main() -> None:
                 "matrix": level_c_vs_level_a["residuals"],
                 "mean": level_c_vs_level_a["residual_mean"],
                 "variance": level_c_vs_level_a["residual_variance"],
+                "corrected_umi": level_c_vs_level_a.get("corrected_umi"),
             },
             "hvg": level_c_vs_level_a["hvg"],
         },

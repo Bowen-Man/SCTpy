@@ -2,13 +2,14 @@
   "schema_version": 1,
   "artifact": {
     "file": "r_v2_small_golden.npz",
-    "sha256": "59cfeaa3032fc837662225e41dc43a0389b898a6e7f6b5e770908da95ca7ffe0",
+    "sha256": "db8602e677ce5158690c3f9d2d5a8cf53f6c2c5890ba900b490c3cffd549931f",
     "contents": [
       "selection manifest arrays",
       "ordered eligible and raw-fit gene names",
       "raw and regularized parameters",
       "residual mean and variance",
-      "complete HVG order and named branch masks"
+      "complete HVG order and named branch masks",
+      "sparse corrected UMI counts"
     ],
     "omitted": [
       "synthetic counts, which are regenerated deterministically",

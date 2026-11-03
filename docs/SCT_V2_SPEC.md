@@ -98,11 +98,27 @@ mode computes each bounded gene block once, updates residual mean/variance and H
 then releases it. Both modes use identical block arithmetic; summary mode never allocates
 the full residual matrix. **project decision; measured**
 
+## Corrected UMI
+
+When requested, the same regularized model is inverted at one fixed library depth `n0`:
+
+```text
+Z_gc = (X_gc - mu_gc) / model_sd_gc
+mu0_g = exp(beta_fit_g0) * n0
+X_corrected_gc = round(max(0, mu0_g + Z_gc * sqrt(mu0_g + mu0_g**2/theta_fit_g)))
+```
+
+This path uses the unclipped Pearson residual and model standard deviation without the
+residual floor. `n0` defaults to the median input library size. The result is an int64
+genes-by-cells CSR matrix; excluded genes remain zero. It is produced in the residual
+gene blocks and does not require retaining the dense residual matrix. **confirmed from
+paper and official documentation; measured**
+
 ## Explicit exclusions
 
-Corrected UMI counts, multiple batches, additional/categorical covariates, v1 aliases,
-float32 reference fitting, and implicit CPU fallback presented as GPU execution are not
-supported. Public boundaries raise instead of applying an undocumented approximation.
+Multiple batches, additional/categorical covariates, v1 aliases, float32 reference
+fitting, and implicit CPU fallback presented as GPU execution are not supported. Public
+boundaries raise instead of applying an undocumented approximation.
 
 The pre-registered numerical gates and measured fixtures are in
 [VALIDATION.md](VALIDATION.md); thresholds are implemented in
