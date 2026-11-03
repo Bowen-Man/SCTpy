@@ -203,8 +203,8 @@ def validate_selection_manifest(
         raise ValueError("selected cell indices must be unique")
     if not np.all(eligible_genes[gene_indices]):
         raise ValueError("selection includes genes below min_cells")
-    expected_gene_names = tuple(gene_names[item] for item in gene_indices)
-    expected_cell_names = tuple(cell_names[item] for item in cell_indices)
+    expected_gene_names = tuple(gene_names[int(item)] for item in gene_indices)
+    expected_cell_names = tuple(cell_names[int(item)] for item in cell_indices)
     if manifest.selected_gene_names != expected_gene_names:
         raise ValueError("selection gene names do not match indices")
     if manifest.selected_cell_names != expected_cell_names:
