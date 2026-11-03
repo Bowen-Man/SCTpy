@@ -6,13 +6,13 @@ import pytest
 from scipy import sparse
 
 from benchmarks.generate_fixture import generate_counts
-from sctransform_native import _gpu, fit_transform
-from sctransform_native._fit import fit_cox_reid_offset_batch
-from sctransform_native._gpu import (
+from sctpy import _gpu, fit_transform
+from sctpy._fit import fit_cox_reid_offset_batch
+from sctpy._gpu import (
     _import_cupy,
     fit_cox_reid_offset_batch_cupy,
 )
-from sctransform_native.core import SCTConfig
+from sctpy.core import SCTConfig
 
 
 def test_cupy_backend_configuration_is_explicit() -> None:
@@ -186,7 +186,7 @@ def test_anndata_outputs_feed_scanpy_and_rapids_pca(cupy_device):
     ad = pytest.importorskip("anndata")
     sc = pytest.importorskip("scanpy")
     rsc = pytest.importorskip("rapids_singlecell")
-    from sctransform_native import fit_transform_anndata, write_anndata
+    from sctpy import fit_transform_anndata, write_anndata
 
     counts = sparse.csr_matrix(generate_counts(genes=800, cells=240, seed=20261102).T)
     adata = ad.AnnData(counts)

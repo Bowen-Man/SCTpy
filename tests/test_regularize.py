@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from sctransform_native._regularize import (
+from sctpy._regularize import (
     _dispersion_target,
     _regularization_prediction_points,
     _theta_from_dispersion,

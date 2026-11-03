@@ -13,7 +13,7 @@ from benchmarks.correctness import (
     sparse_numeric_metrics,
 )
 from benchmarks.generate_fixture import generate_counts
-from sctransform_native import SCTConfig, SelectionManifest, fit_transform
+from sctpy import SCTConfig, SelectionManifest, fit_transform
 
 GOLDEN_PATH = Path(__file__).parent / "data" / "r_v2_small_golden.npz"
 PROVENANCE_PATH = GOLDEN_PATH.with_suffix(".provenance.json")

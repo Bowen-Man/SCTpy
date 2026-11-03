@@ -8,8 +8,8 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 
-from sctransform_native._matrix import CountMatrix, global_nonzero_median
-from sctransform_native.core import _residuals_and_summary
+from sctpy._matrix import CountMatrix, global_nonzero_median
+from sctpy.core import _residuals_and_summary
 
 from ._common import load_fixture, write_json
 from .compare_correctness import load_r_oracle

@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from sctransform_native import SCTConfig, fit_transform
-from sctransform_native.core import _residuals_and_summary
+from sctpy import SCTConfig, fit_transform
+from sctpy.core import _residuals_and_summary
 
 
 @pytest.mark.parametrize("dtype", ["float64", "float32"])

@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from sctransform_native import (
+from sctpy import (
     ImplicitDeviceTransferError,
     SCTConfig,
     fit_transform,

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy import sparse
 
-from sctransform_native import SCTConfig, fit_transform
+from sctpy import SCTConfig, fit_transform
 
 
 def _fit(counts: object, **kwargs: object) -> object:

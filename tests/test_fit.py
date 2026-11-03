@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from sctransform_native._fit import (
+from sctpy._fit import (
     _cox_reid_score_batch,
     fit_cox_reid_offset,
     fit_cox_reid_offset_batch,

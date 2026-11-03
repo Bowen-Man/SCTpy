@@ -74,4 +74,4 @@ jobs:
         run: |
           python -m venv /tmp/sct-wheel-smoke
           /tmp/sct-wheel-smoke/bin/python -m pip install dist/*.whl
-          /tmp/sct-wheel-smoke/bin/python -c "import sctransform_native; assert sctransform_native.__version__ == '0.1.0a1'"
+          /tmp/sct-wheel-smoke/bin/python -c "import sctpy; assert sctpy.__version__ == '0.1.0a1'"

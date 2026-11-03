@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from sctransform_native import SelectionManifest
-from sctransform_native._matrix import matrix_detection_count
+from sctpy import SelectionManifest
+from sctpy._matrix import matrix_detection_count
 
 from ._common import load_fixture, write_json
 

@@ -2,8 +2,8 @@ import numpy as np
 from numpy.testing import assert_allclose, assert_array_equal
 from scipy import sparse
 
-from sctransform_native import SCTConfig, fit_transform
-from sctransform_native._matrix import matrix_statistics, prepare_counts
+from sctpy import SCTConfig, fit_transform
+from sctpy._matrix import matrix_statistics, prepare_counts
 
 
 def test_all_zero_gene_remains_explicitly_excluded() -> None:

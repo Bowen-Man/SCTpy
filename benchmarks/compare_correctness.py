@@ -12,9 +12,9 @@ import numpy as np
 from scipy import sparse
 from scipy.io import mmread
 
-from sctransform_native import SCTConfig, fit_transform
-from sctransform_native._fit import theta_moment_ratio_mask
-from sctransform_native._matrix import matrix_statistics
+from sctpy import SCTConfig, fit_transform
+from sctpy._fit import theta_moment_ratio_mask
+from sctpy._matrix import matrix_statistics
 
 from ._common import count_sha256, load_fixture, load_manifest, write_json
 from .correctness import (
