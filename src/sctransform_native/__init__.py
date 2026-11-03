@@ -2,7 +2,7 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from .anndata import ImplicitDeviceTransferError, fit_transform_anndata
+from .anndata import ImplicitDeviceTransferError, fit_transform_anndata, write_anndata
 from .core import SCTConfig, SCTResult, fit_transform
 from .selection import SelectionManifest, create_selection_manifest
 
@@ -20,4 +20,5 @@ __all__ = [
     "create_selection_manifest",
     "fit_transform",
     "fit_transform_anndata",
+    "write_anndata",
 ]

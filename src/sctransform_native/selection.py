@@ -128,9 +128,9 @@ def create_selection_manifest(
         algorithm="sct_v2_inverse_density_pcg64_v1",
         source_shape=(genes, cells),
         selected_gene_indices=tuple(int(item) for item in selected_genes),
-        selected_gene_names=tuple(gene_names[item] for item in selected_genes),
+        selected_gene_names=tuple(gene_names[int(item)] for item in selected_genes),
         selected_cell_indices=tuple(int(item) for item in selected_cells),
-        selected_cell_names=tuple(cell_names[item] for item in selected_cells),
+        selected_cell_names=tuple(cell_names[int(item)] for item in selected_cells),
         min_cells=min_cells,
         requested_genes=requested_genes,
         requested_cells=requested_cells,
@@ -203,8 +203,8 @@ def validate_selection_manifest(
         raise ValueError("selected cell indices must be unique")
     if not np.all(eligible_genes[gene_indices]):
         raise ValueError("selection includes genes below min_cells")
-    expected_gene_names = tuple(gene_names[item] for item in gene_indices)
-    expected_cell_names = tuple(cell_names[item] for item in cell_indices)
+    expected_gene_names = tuple(gene_names[int(item)] for item in gene_indices)
+    expected_cell_names = tuple(cell_names[int(item)] for item in cell_indices)
     if manifest.selected_gene_names != expected_gene_names:
         raise ValueError("selection gene names do not match indices")
     if manifest.selected_cell_names != expected_cell_names:

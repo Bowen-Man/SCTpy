@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 from scipy import sparse
@@ -46,8 +46,9 @@ def prepare_counts(
         raise ValueError("orientation must be 'genes_by_cells' or 'cells_by_genes'")
 
     if sparse.issparse(counts):
-        _validate_count_values(np.asarray(counts.tocoo(copy=False).data))
-        matrix = counts.T if orientation == "cells_by_genes" else counts
+        sparse_counts = cast(Any, counts)
+        _validate_count_values(np.asarray(sparse_counts.tocoo(copy=False).data))
+        matrix = sparse_counts.T if orientation == "cells_by_genes" else sparse_counts
         if matrix.ndim != 2:
             raise ValueError("counts must be a two-dimensional matrix")
         # A single internal sparse representation keeps matrix/array and format
@@ -136,6 +137,6 @@ def dense_gene_row(counts_gxc: CountMatrix, gene_index: int) -> np.ndarray:
 
 def dense_gene_block(counts_gxc: CountMatrix, indices: np.ndarray) -> np.ndarray:
     block = counts_gxc[indices]
-    if sparse.issparse(block):
+    if isinstance(block, sparse.csr_matrix):
         return block.toarray()
     return np.asarray(block, dtype=np.float64)
