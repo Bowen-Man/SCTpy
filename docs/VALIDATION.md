@@ -83,6 +83,13 @@ theta names, 159 outlier names, and all three HVG sets exactly. Residual RMSE wa
 `0.9999999952`. Selection order is part of the contract because reordering changes
 500-gene bin membership. **measured on 2026-11-03**
 
+The subsequent corrected-count audit found two missing v2 details: the original-depth
+variance floor during reconstruction and the eligible-gene total in Poisson intercepts.
+After correction, all 51,465,000 eligible PBMC corrected counts matched Level A exactly.
+The frozen Level B itself differs from Level A by up to 8 UMI on this dataset, exceeding
+the unchanged maximum-error gate of 2. The joint A/B gate therefore remains failed;
+this is not evidence for relaxing its thresholds. **measured on 2026-11-03**
+
 ## Report and benchmark contracts
 
 `schemas/correctness-report-v1.schema.json` defines six required stages: `input`,

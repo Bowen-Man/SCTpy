@@ -322,7 +322,9 @@ def _residuals_and_summary(
             target_variance = (
                 target_mu + target_mu**2 * corrected_inverse_theta[:, None]
             )
-            pearson = (observed_float64 - corrected_mu) / corrected_standard_deviation
+            pearson = (observed_float64 - corrected_mu) / np.maximum(
+                corrected_standard_deviation, standard_deviation_floor
+            )
             corrected = np.maximum(
                 np.rint(target_mu + pearson * np.sqrt(target_variance)), 0.0
             )
@@ -464,10 +466,15 @@ def fit_transform(
     poisson_intercept = np.full(genes, np.nan, dtype=np.float64)
 
     stage_start = perf_counter()
+    poisson_exposure = (
+        np.asarray([gene_mean[eligible].sum() * cells])
+        if resolved_config.fit_method == "cox_reid"
+        else library_size
+    )
     gene_index: int | np.integer
     for gene_index in np.flatnonzero(eligible & poisson_gene):
         y = dense_gene_row(counts_gxc, int(gene_index))
-        poisson_intercept[gene_index] = poisson_offset_intercept(y, library_size)
+        poisson_intercept[gene_index] = poisson_offset_intercept(y, poisson_exposure)
         raw_intercept[gene_index] = poisson_intercept[gene_index]
         raw_theta[gene_index] = np.inf
         fit_message[gene_index] = "analytic Poisson offset"
