@@ -17,10 +17,11 @@ comments, structure, and binaries are not copied or shipped.
 - block-streamed residual summaries and HVG ranking without retaining a dense matrix;
 - corrected UMI counts at a fixed depth, returned as genes-by-cells CSR;
 - a non-mutating AnnData adapter for cells-by-genes CPU data;
-- float64 reference arithmetic with an opt-in float32 residual path.
+- float64 reference arithmetic with an opt-in float32 residual path;
+- an opt-in CuPy backend for batched Cox--Reid dispersion roots.
 
-Batches, additional covariates, v1 compatibility, float32 fitting, and a package GPU
-backend are not implemented. Unsupported behavior is not approximated silently.
+Batches, additional covariates, v1 compatibility, float32 fitting, and a full GPU pipeline
+are not implemented. Unsupported behavior is not approximated silently.
 
 ## Quickstart
 
@@ -60,6 +61,12 @@ Install the optional AnnData adapter dependency with:
 ```bash
 python -m pip install -e ".[anndata]"
 ```
+
+Install the experimental fitting backend with `.[gpu]` for the current CUDA 13/RAPIDS
+stack or `.[gpu-cu12]` for CUDA 12, then select it with
+`SCTConfig.r_v2(cox_reid_backend="cupy")`. Inputs and results remain on CPU; only bounded
+Cox--Reid root blocks move to the current CuPy device. The backend respects the active
+stream and allocator and never installs or reconfigures RMM.
 
 ## Development
 

@@ -44,6 +44,7 @@ from .selection import (
 StatisticalMode = Literal["native", "r_v2", "experimental"]
 ResidualOutput = Literal["full", "summary"]
 ResidualDType = Literal["float64", "float32"]
+CoxReidBackend = Literal["numpy", "cupy"]
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ class SCTConfig:
     residual_dtype: ResidualDType = "float64"
     cox_reid_gene_bin_size: int | None = None
     cox_reid_batch_size: int | None = None
+    cox_reid_backend: CoxReidBackend = "numpy"
 
     @classmethod
     def r_v2(
@@ -84,6 +86,7 @@ class SCTConfig:
         residual_output: ResidualOutput = "full",
         residual_dtype: ResidualDType = "float64",
         cox_reid_batch_size: int | None = 64,
+        cox_reid_backend: CoxReidBackend = "numpy",
     ) -> SCTConfig:
         """Build the validated R-v2 compatibility configuration."""
         return cls(
@@ -101,6 +104,7 @@ class SCTConfig:
             residual_block_size=residual_block_size,
             residual_output=residual_output,
             residual_dtype=residual_dtype,
+            cox_reid_backend=cox_reid_backend,
         )
 
     @property
@@ -148,6 +152,12 @@ class SCTConfig:
             raise ValueError("cox_reid_gene_bin_size must be positive or None")
         if self.cox_reid_batch_size is not None and self.cox_reid_batch_size < 1:
             raise ValueError("cox_reid_batch_size must be positive or None")
+        if self.cox_reid_backend not in {"numpy", "cupy"}:
+            raise ValueError("cox_reid_backend must be 'numpy' or 'cupy'")
+        if self.cox_reid_backend == "cupy" and (
+            self.fit_method != "cox_reid" or self.cox_reid_batch_size is None
+        ):
+            raise ValueError("the CuPy backend requires batched Cox-Reid fitting")
         if self.bandwidth_adjust <= 0:
             raise ValueError("bandwidth_adjust must be positive")
         if self.outlier_mad_threshold <= 0:
@@ -469,13 +479,19 @@ def fit_transform(
         and resolved_config.cox_reid_batch_size is not None
     ):
         batch_size = resolved_config.cox_reid_batch_size
+        if resolved_config.cox_reid_backend == "cupy":
+            from ._gpu import fit_cox_reid_offset_batch_cupy
+
+            batch_fitter = fit_cox_reid_offset_batch_cupy
+        else:
+            batch_fitter = fit_cox_reid_offset_batch
         for start in range(0, fit_candidates.size, batch_size):
             batch_indices = fit_candidates[start : start + batch_size]
             batch_counts = dense_gene_block(fit_counts, batch_indices)
             gene_fits.extend(
                 zip(
                     (int(index) for index in batch_indices),
-                    fit_cox_reid_offset_batch(batch_counts, fit_library_size),
+                    batch_fitter(batch_counts, fit_library_size),
                     strict=True,
                 )
             )
