@@ -255,7 +255,7 @@ def _cox_reid_score_batch(
         likelihood_term + y / (mu + inverse_dispersion[:, None]), axis=1
     )
 
-    count_sum = np.sum(y, axis=1, dtype=np.float64)
+    count_sum = y.sum(axis=1, dtype=np.float64)
     correction = np.zeros(y.shape[0], dtype=np.float64)
     corrected = inverse_dispersion > 1.0e5
     correction[corrected] = np.sum(
@@ -325,11 +325,13 @@ def fit_cox_reid_offset_batch(y: np.ndarray, exposure: np.ndarray) -> list[GeneF
         upper_dispersion[expanding] = np.minimum(
             upper_dispersion[expanding] * 4.0, _DISPERSION_CEILING
         )
-        index = np.flatnonzero(expanding)
-        upper_score[index] = _cox_reid_score_batch(
-            np.log(upper_dispersion[index]), y[index], mu[index]
+        expanding_indices = np.flatnonzero(expanding)
+        upper_score[expanding_indices] = _cox_reid_score_batch(
+            np.log(upper_dispersion[expanding_indices]),
+            y[expanding_indices],
+            mu[expanding_indices],
         )
-        expansion_iterations[index] += 1
+        expansion_iterations[expanding_indices] += 1
         expanding = (
             (~poisson) & (upper_score > 0.0) & (upper_dispersion < _DISPERSION_CEILING)
         )
@@ -339,15 +341,15 @@ def fit_cox_reid_offset_batch(y: np.ndarray, exposure: np.ndarray) -> list[GeneF
     upper = np.log(upper_dispersion)
     root_iterations = np.zeros(y.shape[0], dtype=np.int64)
     for _ in range(48):
-        index = np.flatnonzero(bracketed)
-        if index.size == 0:
+        active_indices = np.flatnonzero(bracketed)
+        if active_indices.size == 0:
             break
-        midpoint = 0.5 * (lower[index] + upper[index])
-        score = _cox_reid_score_batch(midpoint, y[index], mu[index])
+        midpoint = 0.5 * (lower[active_indices] + upper[active_indices])
+        score = _cox_reid_score_batch(midpoint, y[active_indices], mu[active_indices])
         positive = score > 0.0
-        lower[index[positive]] = midpoint[positive]
-        upper[index[~positive]] = midpoint[~positive]
-        root_iterations[index] += 1
+        lower[active_indices[positive]] = midpoint[positive]
+        upper[active_indices[~positive]] = midpoint[~positive]
+        root_iterations[active_indices] += 1
 
     dispersion = np.exp(0.5 * (lower + upper))
     dispersion[poisson] = 0.0
@@ -427,11 +429,12 @@ def fit_cox_reid_offset(
     )
     mu = np.exp(preliminary_intercept) * exposure
 
+    score_function: Callable[[float, np.ndarray, np.ndarray], float]
     if trace is None:
         score_function = _cox_reid_score
     else:
 
-        def score_function(
+        def traced_score(
             log_dispersion: float, values: np.ndarray, fitted_mean: np.ndarray
         ) -> float:
             value = _cox_reid_score(log_dispersion, values, fitted_mean)
@@ -444,6 +447,8 @@ def fit_cox_reid_offset(
                 score=value,
             )
             return value
+
+        score_function = traced_score
 
     lower = float(np.log(_DISPERSION_FLOOR))
     lower_score = score_function(lower, y, mu)

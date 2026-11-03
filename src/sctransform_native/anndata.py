@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
-from typing import Protocol
+from dataclasses import asdict
+from typing import TYPE_CHECKING, Protocol
+
+import numpy as np
 
 from .core import SCTConfig, SCTResult, fit_transform
 from .selection import SelectionManifest
+
+if TYPE_CHECKING:
+    from anndata import AnnData
 
 
 class ImplicitDeviceTransferError(TypeError):
@@ -61,3 +68,68 @@ def fit_transform_anndata(
         return_corrected_umi=return_corrected_umi,
         corrected_umi_depth=corrected_umi_depth,
     )
+
+
+def write_anndata(
+    adata: AnnData,
+    result: SCTResult,
+    *,
+    n_top_genes: int = 3000,
+    copy: bool = False,
+) -> AnnData | None:
+    """Store an SCT result in AnnData, returning a copy only when requested.
+
+    Names and order must match the fitted data. Replaces standard HVG annotations,
+    ``var['sct_*']`` parameters, ``uns['sct']``, and the ``sct_residuals`` and
+    ``sct_corrected_umi`` layers. X, raw, and other layers are preserved. Summary
+    results remove any previous residual layer. Excluded genes have NaN residuals
+    and HVG ranks; subset to eligible genes before downstream PCA.
+
+    Results are copied to CPU cells-by-genes layers. In-place writes to views or
+    backed objects are rejected; use copy=True for views or to_memory() for backed
+    objects. Configuration and selection are stored as JSON for H5AD portability.
+    """
+    from . import __version__
+
+    if adata.isbacked:
+        raise ValueError("write_anndata requires an in-memory object; use to_memory()")
+    if adata.is_view and not copy:
+        raise ValueError("cannot write to an AnnData view; use copy=True")
+    if (
+        tuple(adata.var_names) != result.gene_names
+        or tuple(adata.obs_names) != result.cell_names
+    ):
+        raise ValueError("AnnData gene/cell names and order must match the SCT result")
+    if (
+        isinstance(n_top_genes, bool)
+        or not isinstance(n_top_genes, (int, np.integer))
+        or n_top_genes < 1
+    ):
+        raise ValueError("n_top_genes must be a positive integer")
+
+    target = adata.copy() if copy else adata
+    rank = result.hvg_rank.astype(np.float64)
+    rank[rank < 0] = np.nan
+    target.var["highly_variable"] = rank < n_top_genes
+    target.var["highly_variable_rank"] = rank
+    target.var["residual_variances"] = result.residual_variance.copy()
+    for name, values in result.parameter_dict().items():
+        target.var[f"sct_{name}"] = values
+    for name in ("eligible_gene", "poisson_gene", "parameter_outlier", "residual_mean"):
+        target.var[f"sct_{name}"] = getattr(result, name).copy()
+    for key in ("sct_residuals", "sct_corrected_umi"):
+        target.layers.pop(key, None)
+    if result.residuals is not None:
+        target.layers["sct_residuals"] = result.residuals.T.copy()
+    if result.corrected_umi is not None:
+        target.layers["sct_corrected_umi"] = result.corrected_umi.T.tocsr()
+    target.uns["sct"] = {
+        "version": __version__,
+        "config_json": json.dumps(asdict(result.config), sort_keys=True),
+        "selection_json": json.dumps(result.selection.to_dict(), sort_keys=True),
+        "clip_range": np.asarray(result.clip_range),
+        "n_top_genes": int(n_top_genes),
+    }
+    if result.corrected_umi_depth is not None:
+        target.uns["sct"]["corrected_umi_depth"] = result.corrected_umi_depth
+    return target if copy else None

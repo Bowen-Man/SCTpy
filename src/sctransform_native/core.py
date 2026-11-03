@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Literal
@@ -464,6 +464,7 @@ def fit_transform(
     poisson_intercept = np.full(genes, np.nan, dtype=np.float64)
 
     stage_start = perf_counter()
+    gene_index: int | np.integer
     for gene_index in np.flatnonzero(eligible & poisson_gene):
         y = dense_gene_row(counts_gxc, int(gene_index))
         poisson_intercept[gene_index] = poisson_offset_intercept(y, library_size)
@@ -479,6 +480,7 @@ def fit_transform(
         and resolved_config.cox_reid_batch_size is not None
     ):
         batch_size = resolved_config.cox_reid_batch_size
+        batch_fitter: Callable[[np.ndarray, np.ndarray], list[GeneFit]]
         if resolved_config.cox_reid_backend == "cupy":
             from ._gpu import fit_cox_reid_offset_batch_cupy
 

@@ -212,7 +212,7 @@ def fit_cox_reid_offset_batch_cupy(
     fallback = (
         dict(
             zip(
-                fallback_indices,
+                (int(index) for index in fallback_indices),
                 fit_cox_reid_offset_batch(counts[fallback_indices], exposure),
                 strict=True,
             )

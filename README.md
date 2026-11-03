@@ -16,7 +16,7 @@ comments, structure, and binaries are not copied or shipped.
   Pearson residuals, clipping, residual variance, and HVG ranking;
 - block-streamed residual summaries and HVG ranking without retaining a dense matrix;
 - corrected UMI counts at a fixed depth, returned as genes-by-cells CSR;
-- a non-mutating AnnData adapter for cells-by-genes CPU data;
+- a non-mutating AnnData adapter and explicit result write-back;
 - float64 reference arithmetic with an opt-in float32 residual path;
 - an opt-in CuPy backend for batched Cox--Reid dispersion roots.
 
@@ -62,6 +62,14 @@ Install the optional AnnData adapter dependency with:
 python -m pip install -e ".[anndata]"
 ```
 
+`fit_transform_anndata(adata, layer="counts", config=SCTConfig.r_v2())` returns an
+`SCTResult` without mutation. `write_anndata(adata, result, n_top_genes=2000)` stores
+HVG annotations and parameters in `.var`, configuration/selection in `.uns["sct"]`,
+and available outputs in `.layers["sct_residuals"]` / `.layers["sct_corrected_umi"]`.
+It preserves `.X` and other layers; `copy=True` returns a new AnnData. Summary results
+write no dense layer and replace previous SCT outputs. Residuals for excluded genes
+are NaN: subset to `.var["sct_eligible_gene"]` or HVGs before downstream PCA.
+
 Install the experimental fitting backend with `.[gpu]` for the current CUDA 13/RAPIDS
 stack or `.[gpu-cu12]` for CUDA 12, then select it with
 `SCTConfig.r_v2(cox_reid_backend="cupy")`. Inputs and results remain on CPU; only bounded
@@ -71,14 +79,16 @@ stream and allocator and never installs or reconfigures RMM.
 ## Development
 
 ```bash
-python -m pip install -e ".[test,lint]"
+python -m pip install -e ".[test,lint,anndata]"
 ruff check .
 ruff format --check .
+mypy
 python -m pytest
 ```
 
-CI covers Windows and Linux on Python 3.10--3.13, package build, metadata checks, and an
-isolated wheel smoke test. CUDA is not required by the package or test suite.
+CI covers Windows and Linux on Python 3.10--3.14, AnnData H5AD round-trips, package build,
+metadata checks, and an isolated wheel smoke test. Type checks run on Python 3.13;
+each test has a 60-second timeout. CUDA is not required by the package or test suite.
 
 Implementation details are kept in five focused documents:
 

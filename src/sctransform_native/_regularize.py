@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
 import numpy as np
@@ -435,6 +436,7 @@ def regularize_parameters(
         raw_theta[train_indices],
         mode=dispersion_regularization,
     )
+    smoother: Callable[..., np.ndarray]
     if regularization_method == "native":
         bandwidth_selector = sheather_jones_bandwidth
         smoother = gaussian_nadaraya_watson
