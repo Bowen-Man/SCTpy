@@ -59,6 +59,15 @@ jobs:
           python -m pip install build twine
           python -m build
           python -m twine check dist/*
+      - name: Test source distribution
+        shell: bash
+        run: |
+          mkdir /tmp/sct-sdist
+          tar -xzf dist/*.tar.gz -C /tmp/sct-sdist
+          sdist_dir=$(find /tmp/sct-sdist -mindepth 1 -maxdepth 1 -type d -print -quit)
+          python -m venv /tmp/sct-sdist-smoke
+          /tmp/sct-sdist-smoke/bin/python -m pip install "$sdist_dir[test]"
+          (cd "$sdist_dir" && /tmp/sct-sdist-smoke/bin/python -m pytest)
       - name: Isolated wheel smoke test
         shell: bash
         run: |

@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import sparse
 
 from benchmarks.correctness import (
     MIXED_PRECISION_THRESHOLDS,
@@ -15,14 +16,14 @@ def test_float32_residual_path_passes_preregistered_gate() -> None:
     genes = tuple(f"gene_{index:05d}" for index in range(counts.shape[0]))
     cells = tuple(f"cell_{index:05d}" for index in range(counts.shape[1]))
     float64 = fit_transform(
-        counts,
+        sparse.csr_matrix(counts),
         gene_names=genes,
         cell_names=cells,
         config=SCTConfig.r_v2(n_genes=None, n_cells=None),
         return_corrected_umi=True,
     )
     float32 = fit_transform(
-        counts,
+        sparse.csr_matrix(counts),
         gene_names=genes,
         cell_names=cells,
         config=SCTConfig.r_v2(
