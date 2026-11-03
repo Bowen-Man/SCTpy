@@ -11,8 +11,8 @@ from sctransform_native import SelectionManifest
 def test_reference_receives_complete_ordered_manifest(monkeypatch, tmp_path):
     # The sampled cells alone make both rows non-overdispersed. The adapter must
     # still replay the oracle's selection, including its original gene order.
-    counts = np.array([[1, 1, 30, 0], [2, 2, 0, 40]])
-    genes, cells = ("a", "b"), ("c0", "c1", "c2", "c3")
+    counts = np.array([[1, 1, 1, 1, 1, 1, 30, 0], [2, 2, 2, 2, 2, 2, 0, 40]])
+    genes, cells = ("a", "b"), tuple(f"c{i}" for i in range(8))
     manifest = SelectionManifest(
         schema_version=1,
         seed=42,
@@ -20,11 +20,11 @@ def test_reference_receives_complete_ordered_manifest(monkeypatch, tmp_path):
         source_shape=counts.shape,
         selected_gene_indices=(1, 0),
         selected_gene_names=("b", "a"),
-        selected_cell_indices=(1, 0),
-        selected_cell_names=("c1", "c0"),
-        min_cells=1,
+        selected_cell_indices=(5, 4, 3, 2, 1, 0),
+        selected_cell_names=tuple(f"c{i}" for i in range(5, -1, -1)),
+        min_cells=5,
         requested_genes=2,
-        requested_cells=2,
+        requested_cells=6,
     )
     received = {}
 
@@ -79,7 +79,7 @@ def test_reference_receives_complete_ordered_manifest(monkeypatch, tmp_path):
             cells=np.asarray(cells),
             residual_gene_indices=np.array([0, 1]),
             fit_gene_indices=np.array([0, 1]),
-            fit_cell_indices=np.array([1, 0]),
+            fit_cell_indices=np.asarray(manifest.selected_cell_indices),
         ),
     )
     with pytest.raises(RuntimeError, match="ordered selection manifest"):
