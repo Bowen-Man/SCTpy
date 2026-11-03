@@ -83,6 +83,9 @@ def main() -> None:
     parser.add_argument(
         "--residual-output", choices=("full", "summary"), default="full"
     )
+    parser.add_argument(
+        "--residual-dtype", choices=("float64", "float32"), default="float64"
+    )
     parser.add_argument("--corrected-umi", action="store_true")
     args = parser.parse_args()
 
@@ -102,6 +105,7 @@ def main() -> None:
         theta_postprocess=args.theta_postprocess,
         residual_block_size=args.block_size,
         residual_output=args.residual_output,
+        residual_dtype=args.residual_dtype,
     )
     baseline_rss = psutil.Process().memory_info().rss
     rss_samples = [baseline_rss]
@@ -132,7 +136,9 @@ def main() -> None:
     profile.dump_stats(args.profile)
 
     gene_block_shape = [min(args.block_size, len(genes)), len(cells)]
-    block_bytes = int(np.prod(gene_block_shape) * np.dtype(np.float64).itemsize)
+    residual_dtype = np.dtype(args.residual_dtype)
+    block_bytes = int(np.prod(gene_block_shape) * residual_dtype.itemsize)
+    float64_block_bytes = int(np.prod(gene_block_shape) * np.dtype(np.float64).itemsize)
     sj_training_count = int(
         np.count_nonzero(
             result.selected_gene
@@ -177,6 +183,7 @@ def main() -> None:
             "regularization_support": args.regularization_support,
             "theta_postprocess": args.theta_postprocess,
             "residual_output": args.residual_output,
+            "residual_dtype": args.residual_dtype,
             "corrected_umi": args.corrected_umi,
         },
         "wall_seconds": wall_seconds,
@@ -208,11 +215,23 @@ def main() -> None:
             },
             "residual_gene_block": {
                 "shape": gene_block_shape,
-                "dtype": "float64",
+                "dtype": str(residual_dtype),
                 "nbytes_each": block_bytes,
-                "estimated_simultaneous_dense_arrays": 5,
-                "estimated_peak_block_bytes": block_bytes * 5,
+                "estimated_simultaneous_dense_arrays": 6,
+                "estimated_peak_block_bytes": (
+                    block_bytes * 6
+                    + (float64_block_bytes if args.residual_dtype == "float32" else 0)
+                ),
                 "lifetime": "allocated and released once per residual gene block",
+            },
+            "corrected_umi_dense_block": {
+                "shape": gene_block_shape,
+                "dtype": "float64",
+                "nbytes_each": float64_block_bytes,
+                "estimated_simultaneous_dense_arrays": 5,
+                "estimated_peak_block_bytes": float64_block_bytes * 5,
+                "lifetime": "allocated and released once per corrected-UMI gene block",
+                "active": args.corrected_umi,
             },
             "bandwidth_workspace": {
                 "shape": bandwidth_shape,

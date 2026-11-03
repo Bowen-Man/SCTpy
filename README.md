@@ -17,7 +17,7 @@ comments, structure, and binaries are not copied or shipped.
 - block-streamed residual summaries and HVG ranking without retaining a dense matrix;
 - corrected UMI counts at a fixed depth, returned as genes-by-cells CSR;
 - a non-mutating AnnData adapter for cells-by-genes CPU data;
-- float64 reference arithmetic.
+- float64 reference arithmetic with an opt-in float32 residual path.
 
 Batches, additional covariates, v1 compatibility, float32 fitting, and a package GPU
 backend are not implemented. Unsupported behavior is not approximated silently.
@@ -52,6 +52,8 @@ in bounded gene blocks. Set `residual_output="summary"` in the configuration to 
 only residual mean, variance, and HVG ranks; `result.residuals` is then `None`.
 Corrected UMI output remains sparse and defaults to the median input library size;
 `corrected_umi_depth=` selects another positive fixed depth.
+`residual_dtype="float32"` reduces residual block and output storage; fitting,
+regularization, summary reductions, and corrected UMI reconstruction remain float64.
 
 Install the optional AnnData adapter dependency with:
 

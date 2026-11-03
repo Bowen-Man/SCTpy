@@ -59,6 +59,7 @@ def _worker(
     regularization_support: str,
     theta_postprocess: str,
     residual_output: str,
+    residual_dtype: str,
     return_corrected_umi: bool,
     trace_python_allocations: bool,
 ) -> dict[str, Any]:
@@ -98,6 +99,7 @@ def _worker(
             regularization_support=regularization_support,
             theta_postprocess=theta_postprocess,
             residual_output=residual_output,
+            residual_dtype=residual_dtype,
         ),
         selection=manifest,
         return_corrected_umi=return_corrected_umi,
@@ -218,6 +220,9 @@ def main() -> None:
     parser.add_argument(
         "--residual-output", choices=("full", "summary"), default="full"
     )
+    parser.add_argument(
+        "--residual-dtype", choices=("float64", "float32"), default="float64"
+    )
     parser.add_argument("--corrected-umi", action="store_true")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -237,6 +242,7 @@ def main() -> None:
                     regularization_support=args.regularization_support,
                     theta_postprocess=args.theta_postprocess,
                     residual_output=args.residual_output,
+                    residual_dtype=args.residual_dtype,
                     return_corrected_umi=args.corrected_umi,
                     trace_python_allocations=args.trace_python_allocations,
                 )
@@ -274,6 +280,8 @@ def main() -> None:
         args.theta_postprocess,
         "--residual-output",
         args.residual_output,
+        "--residual-dtype",
+        args.residual_dtype,
     ]
     if args.cox_reid_gene_bin_size is not None:
         command.extend(["--cox-reid-gene-bin-size", str(args.cox_reid_gene_bin_size)])
@@ -320,6 +328,7 @@ def main() -> None:
             "regularization_support": args.regularization_support,
             "theta_postprocess": args.theta_postprocess,
             "residual_output": args.residual_output,
+            "residual_dtype": args.residual_dtype,
             "corrected_umi": args.corrected_umi,
         },
         "blas_configuration": _blas_report(),
