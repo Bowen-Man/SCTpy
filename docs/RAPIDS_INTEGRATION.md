@@ -38,5 +38,28 @@ the CPU block. Chunking, async copies, double buffering, Triton, persistent kern
 custom CUDA require new profile evidence. SciPy-controlled scalar roots may remain on
 CPU.
 
+## Isolated GPU result
+
+The pre-registered gate requires exact Poisson/ceiling masks, log10-theta RMSE at most
+`1e-6`, and maximum absolute error at most `1e-4`. On a local 10,319 x 36,601 sparse
+raw-count H5AD, a fixed seed selected 10,000 cells and the most overdispersed genes.
+One warm-up and five float64 runs used CuPy 14.2, RMM 26.10, a 512 MiB pool, an RTX
+5070 12 GB, and OMP/MKL/OpenBLAS thread limits of one. **measured on 2026-11-03**
+
+| Genes | CPU root | H2D | GPU kernel | D2H | GPU end-to-end | Speedup | RMM peak |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 64 | 1.1407 s | 0.0009 s | 0.0599 s | 0.0002 s | 0.0611 s | 18.66x | 43.96 MiB |
+| 128 | 1.7742 s | 0.0016 s | 0.0950 s | 0.0002 s | 0.0971 s | 18.28x | 87.91 MiB |
+| 256 | 3.6374 s | 0.0030 s | 0.1998 s | 0.0002 s | 0.2031 s | 17.91x | 175.82 MiB |
+
+All branch masks and expansion counts matched; worst log10-theta RMSE was `1.08e-14`.
+The score/root block is therefore justified as the first package GPU candidate. This is
+not an end-to-end SCT speed claim. The kernel dominates, transfers do not yet justify
+asynchrony, and temporary memory grows approximately with block size. Extrapolating the
+measured peak to all 17,387 candidate genes gives about 11.7 GiB before runtime and pool
+overhead, leaving no safe 12 GB headroom. A backend must therefore retain CPU preliminary
+fitting and process bounded gene blocks. The benchmark owns its RMM pool; library code
+must not replace a caller's allocator.
+
 GPU dependencies will be published only when a GPU implementation enters the package.
 Until then, the local CUDA development environment is intentionally not package metadata.
