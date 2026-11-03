@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 from scipy import sparse
 
 from benchmarks._common import count_sha256
@@ -35,7 +36,10 @@ def _assert_error_bounds(
     assert float(metrics["max_absolute_error"]) <= maximum
 
 
-def test_r_v2_small_frozen_correctness_gate() -> None:
+@pytest.mark.parametrize("backend", ["numpy", "cupy"])
+def test_r_v2_small_frozen_correctness_gate(backend, request) -> None:
+    if backend == "cupy":
+        request.getfixturevalue("cupy_device")
     provenance = json.loads(PROVENANCE_PATH.read_text(encoding="utf-8"))
     assert (
         hashlib.sha256(GOLDEN_PATH.read_bytes()).hexdigest()
@@ -68,7 +72,9 @@ def test_r_v2_small_frozen_correctness_gate() -> None:
             sparse.csr_matrix(counts),
             gene_names=gene_names,
             cell_names=cell_names,
-            config=SCTConfig.r_v2(n_genes=None, n_cells=None, seed=20261102),
+            config=SCTConfig.r_v2(
+                n_genes=None, n_cells=None, seed=20261102, cox_reid_backend=backend
+            ),
             selection=selection,
             return_corrected_umi=True,
         )

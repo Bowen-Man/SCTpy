@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
+import importlib.metadata
 import io
 import json
 import os
@@ -20,7 +22,7 @@ import numpy as np
 import psutil
 from scipy import sparse
 
-from sctransform_native import SCTConfig, fit_transform
+from sctransform_native import SCTConfig, SCTResult, fit_transform
 
 from ._common import load_fixture, load_manifest, matrix_summary, write_json
 
@@ -62,6 +64,9 @@ def _worker(
     residual_dtype: str,
     return_corrected_umi: bool,
     trace_python_allocations: bool,
+    cox_reid_backend: str,
+    compute_warmups: int,
+    allocator: str,
 ) -> dict[str, Any]:
     process = psutil.Process()
     baseline_rss = process.memory_info().rss
@@ -78,33 +83,80 @@ def _worker(
     cpu_start = time.process_time()
     wall_start = time.perf_counter()
     sampler.start()
+    gpu = None
+    gpu_statistics = None
+    gpu_setup_start = time.perf_counter()
+    if cox_reid_backend == "cupy":
+        import cupy as cp
+
+        if allocator == "rmm":
+            import rmm
+            import rmm.statistics
+            from rmm.allocators.cupy import rmm_cupy_allocator
+
+            rmm.reinitialize(pool_allocator=True, initial_pool_size=512 * 1024**2)
+            cp.cuda.set_allocator(rmm_cupy_allocator)
+            gpu_statistics = rmm.statistics
+        properties = cp.cuda.runtime.getDeviceProperties(cp.cuda.Device().id)
+        gpu = {
+            "device": properties["name"].decode(),
+            "total_memory_bytes": properties["totalGlobalMem"],
+            "cupy": cp.__version__,
+            "allocator": allocator,
+            "rmm": rmm.__version__ if allocator == "rmm" else None,
+            "runtime_version": cp.cuda.runtime.runtimeGetVersion(),
+            "driver_version": cp.cuda.runtime.driverGetVersion(),
+        }
+    gpu_setup_seconds = time.perf_counter() - gpu_setup_start
     counts, genes, cells = load_fixture(fixture)
     input_matrix: np.ndarray | sparse.csr_matrix
-    input_matrix = sparse.csr_matrix(counts) if input_format == "csr" else counts
-    manifest = load_manifest(manifest_path)
-    compute_start = time.perf_counter()
-    result = fit_transform(
-        input_matrix,
-        gene_names=genes,
-        cell_names=cells,
-        config=SCTConfig(
-            min_cells=5,
-            n_genes=None,
-            n_cells=None,
-            fit_method=fit_method,
-            cox_reid_gene_bin_size=cox_reid_gene_bin_size,
-            cox_reid_batch_size=cox_reid_batch_size,
-            dispersion_regularization=dispersion_regularization,
-            regularization_method=regularization_method,
-            regularization_support=regularization_support,
-            theta_postprocess=theta_postprocess,
-            residual_output=residual_output,
-            residual_dtype=residual_dtype,
-        ),
-        selection=manifest,
-        return_corrected_umi=return_corrected_umi,
+    input_matrix = (
+        sparse.csr_matrix(counts)
+        if input_format == "csr"
+        else (counts.toarray() if sparse.issparse(counts) else counts)
     )
-    compute_wall = time.perf_counter() - compute_start
+    manifest = load_manifest(manifest_path)
+    config = SCTConfig(
+        min_cells=5,
+        n_genes=None,
+        n_cells=None,
+        fit_method=fit_method,
+        cox_reid_gene_bin_size=cox_reid_gene_bin_size,
+        cox_reid_batch_size=cox_reid_batch_size,
+        dispersion_regularization=dispersion_regularization,
+        regularization_method=regularization_method,
+        regularization_support=regularization_support,
+        theta_postprocess=theta_postprocess,
+        residual_output=residual_output,
+        residual_dtype=residual_dtype,
+        cox_reid_backend=cox_reid_backend,
+    )
+
+    def compute() -> SCTResult:
+        return fit_transform(
+            input_matrix,
+            gene_names=genes,
+            cell_names=cells,
+            config=config,
+            selection=manifest,
+            return_corrected_umi=return_corrected_umi,
+        )
+
+    warmup_start = time.perf_counter()
+    for _ in range(compute_warmups):
+        compute()
+    warmup_seconds = time.perf_counter() - warmup_start
+    memory_context = (
+        gpu_statistics.statistics() if gpu_statistics else contextlib.nullcontext()
+    )
+    with memory_context:
+        compute_start = time.perf_counter()
+        result = compute()
+        compute_wall = time.perf_counter() - compute_start
+        if gpu_statistics:
+            gpu["rmm_peak_bytes"] = gpu_statistics.get_statistics().peak_bytes
+    if gpu is not None:
+        gpu["cupy_pool_reserved_bytes"] = cp.get_default_memory_pool().total_bytes()
     end_to_end_wall = time.perf_counter() - wall_start
     process_cpu = time.process_time() - cpu_start
     stop.set()
@@ -115,6 +167,9 @@ def _worker(
         tracemalloc.stop()
     peak_rss = max(rss_samples)
     output = {
+        "gpu": gpu,
+        "gpu_setup_seconds": gpu_setup_seconds,
+        "compute_warmup_seconds": warmup_seconds,
         "compute_wall_seconds": compute_wall,
         "end_to_end_wall_seconds": end_to_end_wall,
         "process_cpu_seconds": process_cpu,
@@ -138,6 +193,45 @@ def _worker(
     if traced_peak is not None:
         output["python_tracemalloc_peak_bytes"] = traced_peak
     return output
+
+
+def _run_budgeted(
+    command: list[str],
+    environment: dict[str, str],
+    time_budget: float,
+    memory_budget: float,
+) -> str:
+    started = time.perf_counter()
+    with subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+    ) as process:
+        observed = psutil.Process(process.pid)
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=0.02)
+                break
+            except subprocess.TimeoutExpired:
+                if time.perf_counter() - started > time_budget:
+                    process.kill()
+                    process.communicate()
+                    raise RuntimeError("time budget exceeded") from None
+                try:
+                    rss = observed.memory_info().rss
+                except psutil.NoSuchProcess:
+                    continue
+                if rss > memory_budget:
+                    process.kill()
+                    process.communicate()
+                    raise RuntimeError("memory budget exceeded") from None
+        if process.returncode:
+            raise subprocess.CalledProcessError(
+                process.returncode, command, stdout, stderr
+            )
+    return stdout
 
 
 def _blas_report() -> str:
@@ -189,6 +283,16 @@ def main() -> None:
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--threads", type=int, default=1)
+    parser.add_argument(
+        "--compute-warmups",
+        type=int,
+        default=0,
+        help="Untimed fit calls inside each worker; end-to-end/process times still include them",
+    )
+    parser.add_argument(
+        "--cox-reid-backend", choices=("numpy", "cupy"), default="numpy"
+    )
+    parser.add_argument("--allocator", choices=("cupy", "rmm"), default="cupy")
     parser.add_argument("--time-budget-seconds", type=float, default=300.0)
     parser.add_argument("--memory-budget-mib", type=float, default=4096.0)
     parser.add_argument("--trace-python-allocations", action="store_true")
@@ -245,12 +349,22 @@ def main() -> None:
                     residual_dtype=args.residual_dtype,
                     return_corrected_umi=args.corrected_umi,
                     trace_python_allocations=args.trace_python_allocations,
+                    cox_reid_backend=args.cox_reid_backend,
+                    compute_warmups=args.compute_warmups,
+                    allocator=args.allocator,
                 )
             )
         )
         return
     if args.warmups < 1 or args.repeats < 1 or args.threads < 1:
         raise ValueError("warmups, repeats, and threads must be positive")
+    if args.compute_warmups < 0 or any(
+        not np.isfinite(value) or value <= 0
+        for value in (args.time_budget_seconds, args.memory_budget_mib)
+    ):
+        raise ValueError(
+            "compute-warmups must be nonnegative and budgets positive/finite"
+        )
 
     environment = os.environ.copy()
     for name in THREAD_VARIABLES:
@@ -262,6 +376,12 @@ def main() -> None:
         "-m",
         "benchmarks.run_baseline",
         "--worker",
+        "--cox-reid-backend",
+        args.cox_reid_backend,
+        "--compute-warmups",
+        str(args.compute_warmups),
+        "--allocator",
+        args.allocator,
         "--fixture",
         str(args.fixture),
         "--manifest",
@@ -293,15 +413,14 @@ def main() -> None:
         command.append("--corrected-umi")
     for index in range(args.warmups + args.repeats):
         process_start = time.perf_counter()
-        completed = subprocess.run(
+        stdout = _run_budgeted(
             command,
-            check=True,
-            capture_output=True,
-            text=True,
-            env=environment,
+            environment,
+            args.time_budget_seconds,
+            args.memory_budget_mib * 1024**2,
         )
         process_wall = time.perf_counter() - process_start
-        value = json.loads(completed.stdout.strip().splitlines()[-1])
+        value = json.loads(stdout.strip().splitlines()[-1])
         value["process_wall_seconds"] = process_wall
         if value["peak_rss_bytes"] > args.memory_budget_mib * 1024**2:
             raise RuntimeError("memory budget exceeded")
@@ -311,8 +430,15 @@ def main() -> None:
 
     report = {
         "schema_version": 1,
+        "fixture_sha256": hashlib.sha256(args.fixture.read_bytes()).hexdigest(),
+        "manifest_sha256": hashlib.sha256(args.manifest.read_bytes()).hexdigest(),
         "generated_on": datetime.now(timezone.utc).date().isoformat(),
         "python": sys.version,
+        "versions": {
+            name: importlib.metadata.version(name)
+            for name in ("numpy", "scipy", "sctransform-native")
+        },
+        "compute_warmups_per_process": args.compute_warmups,
         "platform": sys.platform,
         "processor": platform.processor(),
         "cpu_logical_count": psutil.cpu_count(logical=True),
@@ -323,6 +449,7 @@ def main() -> None:
             "fit_method": args.fit_method,
             "cox_reid_gene_bin_size": args.cox_reid_gene_bin_size,
             "cox_reid_batch_size": args.cox_reid_batch_size,
+            "cox_reid_backend": args.cox_reid_backend,
             "dispersion_regularization": args.dispersion_regularization,
             "regularization_method": args.regularization_method,
             "regularization_support": args.regularization_support,
@@ -341,11 +468,12 @@ def main() -> None:
             "peak_rss_mib": args.memory_budget_mib,
         },
         "notes": {
+            "timing": "compute times exclude setup, I/O and per-process warmups; end-to-end, CPU time and peak RSS include them; each worker is a fresh process",
             "rss": "sampled process RSS includes Python and native allocations",
             "tracemalloc": (
                 "enabled; timing includes its overhead"
                 if args.trace_python_allocations
-                else "disabled for timing; use profile_stages.py for the supplemental Python-only peak"
+                else "disabled for timing; profile_stages.py reports traced allocations, not total native/GPU memory"
             ),
         },
     }
