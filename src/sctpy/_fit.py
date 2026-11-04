@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from scipy.optimize import brentq, minimize
@@ -228,6 +228,31 @@ def _cox_reid_score(log_dispersion: float, y: np.ndarray, mu: np.ndarray) -> flo
     )
 
 
+def _scaled_digamma_difference(
+    dispersion: Any, counts: Any, *, xp: Any = np, psi: Any = digamma
+) -> Any:
+    """Return theta*(psi(theta+y)-psi(theta)) without small-phi cancellation.
+
+    DLMF 5.11.2 and 5.11(ii): after B12, the two positive-real remainder
+    bounds sum to at most phi**13/6. The switch limits this to float64 epsilon
+    per count, independently of observed oracle agreement.
+    """
+    cutoff = (6.0 * np.finfo(np.float64).eps) ** (1.0 / 13.0)
+    phi = xp.minimum(dispersion, cutoff)[:, None]
+    log_ratio = xp.log1p(phi * counts)
+    series = log_ratio / phi + 0.5 * (phi * counts) / (1.0 + phi * counts)
+    # B_(2k)/(2k), k=1..6, from the Bernoulli-number expansion.
+    coefficients = (1 / 12, -1 / 120, 1 / 252, -1 / 240, 1 / 132, -691 / 32760)
+    for k, coefficient in enumerate(coefficients, start=1):
+        power = 2 * k
+        series -= coefficient * phi ** (power - 1) * xp.expm1(-power * log_ratio)
+    theta = (1.0 / dispersion)[:, None]
+    # Bound the unused branch too, avoiding cancellation at huge theta.
+    direct_theta = xp.minimum(theta, 1.0 / cutoff)
+    direct = direct_theta * (psi(direct_theta + counts) - psi(direct_theta))
+    return xp.where(dispersion[:, None] <= cutoff, series, direct)
+
+
 def _cox_reid_score_batch(
     log_dispersion: np.ndarray, y: np.ndarray, mu: np.ndarray
 ) -> np.ndarray:
@@ -242,41 +267,18 @@ def _cox_reid_score_batch(
     regular = ~(tiny | small)
     likelihood_term[tiny] = scaled_mu[tiny] ** 2 * (1.0 / (1.0 + scaled_mu[tiny]) - 0.5)
     inverse = np.broadcast_to(inverse_dispersion[:, None], mu.shape)
-    suggestion = np.log(1.0 + scaled_mu[small]) - mu[small] / (
-        mu[small] + inverse[small]
-    )
+    suggestion = np.log1p(scaled_mu[small]) - mu[small] / (mu[small] + inverse[small])
     upper = scaled_mu[small] ** 2 / (1.0 + scaled_mu[small])
     lower = scaled_mu[small] ** 2 * (1.0 / (1.0 + scaled_mu[small]) - 0.5)
     likelihood_term[small] = np.clip(suggestion, lower, upper)
-    likelihood_term[regular] = np.log(1.0 + scaled_mu[regular]) - mu[regular] / (
+    likelihood_term[regular] = np.log1p(scaled_mu[regular]) - mu[regular] / (
         mu[regular] + inverse[regular]
     )
     likelihood_score = inverse_dispersion * np.sum(
         likelihood_term + y / (mu + inverse_dispersion[:, None]), axis=1
     )
 
-    count_sum = y.sum(axis=1, dtype=np.float64)
-    correction = np.zeros(y.shape[0], dtype=np.float64)
-    corrected = inverse_dispersion > 1.0e5
-    correction[corrected] = np.sum(
-        y[corrected] * (y[corrected] - 1.0), axis=1, dtype=np.float64
-    ) / (2.0 * inverse_dispersion[corrected])
-    asymptotic = np.max(y, axis=1) * 1.0e6 < inverse_dispersion
-    digamma_score = count_sum - correction
-    exact = ~asymptotic
-    if np.any(exact):
-        exact_score = np.sum(
-            (
-                digamma(y[exact] + inverse_dispersion[exact, None])
-                - digamma(inverse_dispersion[exact, None])
-            )
-            * inverse_dispersion[exact, None],
-            axis=1,
-            dtype=np.float64,
-        )
-        digamma_score[exact] = np.minimum(
-            exact_score, count_sum[exact] - correction[exact]
-        )
+    digamma_score = np.sum(_scaled_digamma_difference(dispersion, y), axis=1)
 
     weights = mu / (1.0 + dispersion[:, None] * mu)
     adjustment = (

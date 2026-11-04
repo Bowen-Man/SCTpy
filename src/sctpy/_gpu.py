@@ -13,6 +13,7 @@ from ._fit import (
     GeneFit,
     _cox_reid_score_batch,
     _negative_log_likelihood_and_gradient,
+    _scaled_digamma_difference,
     fit_cox_reid_offset_batch,
     offset_intercept,
 )
@@ -53,24 +54,8 @@ def _cox_reid_score_cupy(
         dtype=cp.float64,
     )
 
-    count_sum = cp.sum(counts, axis=1, dtype=cp.float64)
-    correction_value = cp.sum(counts * (counts - 1.0), axis=1, dtype=cp.float64) / (
-        2.0 * inverse_dispersion
-    )
-    correction = cp.where(inverse_dispersion > 1.0e5, correction_value, 0.0)
-    asymptotic = cp.max(counts, axis=1) * 1.0e6 < inverse_dispersion
-    exact_score = cp.sum(
-        (
-            digamma(counts + inverse_dispersion[:, None])
-            - digamma(inverse_dispersion[:, None])
-        )
-        * inverse_dispersion[:, None],
-        axis=1,
-        dtype=cp.float64,
-    )
-    upper_digamma = count_sum - correction
-    digamma_score = cp.where(
-        asymptotic, upper_digamma, cp.minimum(exact_score, upper_digamma)
+    digamma_score = cp.sum(
+        _scaled_digamma_difference(dispersion, counts, xp=cp, psi=digamma), axis=1
     )
 
     weights = mu / (1.0 + dispersion[:, None] * mu)
