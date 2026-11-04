@@ -477,7 +477,11 @@ def fit_transform(
         poisson_intercept[gene_index] = poisson_offset_intercept(y, poisson_exposure)
         raw_intercept[gene_index] = poisson_intercept[gene_index]
         raw_theta[gene_index] = np.inf
-        fit_message[gene_index] = "analytic Poisson offset"
+        fit_message[gene_index] = (
+            "R compatibility Poisson fraction (eligible total)"
+            if resolved_config.fit_method == "cox_reid"
+            else "analytic Poisson offset"
+        )
         status[gene_index] = "poisson"
 
     fit_candidates = selected_genes[step1_candidate[selected_genes]]
@@ -627,7 +631,10 @@ def fit_transform(
         if resolved_config.clip_range is not None
         else (-float(np.sqrt(cells)), float(np.sqrt(cells)))
     )
-    nonzero_median = global_nonzero_median(counts_gxc)
+    floor_counts = (
+        counts_gxc[eligible] if resolved_config.fit_method == "cox_reid" else counts_gxc
+    )
+    nonzero_median = global_nonzero_median(floor_counts)
     resolved_corrected_umi_depth = (
         float(np.median(library_size))
         if return_corrected_umi and corrected_umi_depth is None
