@@ -1,35 +1,32 @@
 # SCTpy
 
-SCTpy is an independent NumPy/SciPy implementation of the SCTransform v2 model. The
-project is an alpha (`0.1.0a1`): it implements a validated core, not the historical R API.
+SCTransform v2 normalization in Python, using NumPy and SciPy. SCTpy is an alpha
+(`0.1.0a1`) with a CPU core and an experimental CuPy fitting backend. The runtime
+requires neither R nor reference binaries and includes no project-owned compiled extension.
 
-Previously named `sctransform-native`; the package and import name are now `sctpy`.
-
-The runtime has no R dependency, reference binary, or project-owned compiled extension.
-GPL implementations are external numerical oracles only; their source expression, tests,
-comments, structure, and binaries are not copied or shipped.
+Previously named `sctransform-native`; install and import as `sctpy`.
 
 ## Supported core
 
-- dense NumPy and SciPy CSR/CSC raw UMI counts;
-- one explicit internal orientation: genes by cells;
-- reproducible cell/gene selection manifests;
-- v2 fixed-slope offset fitting, theta estimation, Poisson genes, regularization,
-  Pearson residuals, clipping, residual variance, and HVG ranking;
-- block-streamed residual summaries and HVG ranking without retaining a dense matrix;
-- corrected UMI counts at a fixed depth, returned as genes-by-cells CSR;
-- a non-mutating AnnData adapter and explicit result write-back;
-- float64 reference arithmetic with an opt-in float32 residual path;
-- an opt-in CuPy backend for batched Cox--Reid dispersion roots.
+- Dense NumPy and SciPy CSR/CSC raw UMI counts, with explicit cell/gene selection manifests.
+- Fixed-slope offset fitting, dispersion estimation, Poisson genes and regularization.
+- Clipped Pearson residuals, residual statistics and highly variable gene (HVG) ranking.
+- Block-streamed residual summaries and sparse corrected UMI counts at a fixed depth.
+- AnnData input and explicit write-back, with optional float32 residual computation/storage.
 
-Batches, additional covariates, v1 compatibility, float32 fitting, and a full GPU pipeline
-are not implemented. Unsupported behavior is not approximated silently.
+Batch models, extra covariates, SCT v1, float32 fitting and a full GPU pipeline are not
+implemented. This package does not reproduce the complete historical R API.
 
 ## Quickstart
 
 ```bash
+git clone https://github.com/Bowen-Man/SCTpy.git
+cd SCTpy
 python -m pip install -e .
 ```
+
+Use raw, nonnegative integer counts. The numerical core returns **genes × cells**
+matrices; the AnnData adapter accepts **cells × genes** and handles orientation explicitly.
 
 ```python
 from sctpy import SCTConfig, fit_transform
@@ -48,15 +45,20 @@ corrected_umi = result.corrected_umi
 hvg_2000 = result.highly_variable_genes(2000)
 ```
 
-`SCTConfig.r_v2()` selects the validated compatibility path. Plain `SCTConfig()` retains
-the native research defaults; mixed configurations are labelled `experimental`. Sparse
-input remains sparse during validation, selection, and reductions. Residuals are computed
-in bounded gene blocks. Set `residual_output="summary"` in the configuration to retain
-only residual mean, variance, and HVG ranks; `result.residuals` is then `None`.
-Corrected UMI output remains sparse and defaults to the median input library size;
+`SCTConfig.r_v2()` selects the R-v2 compatibility settings. Plain `SCTConfig()` uses
+the native research defaults; these modes need not produce the same results. Other
+combinations are labelled `experimental`. Reuse `result.selection` through the
+`selection=` argument to replay the exact selected cell/gene indices on the same input.
+
+Sparse input stays sparse during validation, selection and reductions. Residual blocks
+are dense; the default also retains a dense residual matrix. For HVG-only workflows,
+use `SCTConfig.r_v2(residual_output="summary")`: statistics and ranks remain available,
+but `result.residuals` is `None`. `residual_dtype="float32"` reduces residual storage;
+fitting, regularization, summary reductions and corrected-count reconstruction stay float64.
+Corrected UMI counts are returned as CSR, using the median input library size by default;
 `corrected_umi_depth=` selects another positive fixed depth.
-`residual_dtype="float32"` reduces residual block and output storage; fitting,
-regularization, summary reductions, and corrected UMI reconstruction remain float64.
+
+## AnnData
 
 Install the optional AnnData adapter dependency with:
 
@@ -64,19 +66,30 @@ Install the optional AnnData adapter dependency with:
 python -m pip install -e ".[anndata]"
 ```
 
-`fit_transform_anndata(adata, layer="counts", config=SCTConfig.r_v2())` returns an
-`SCTResult` without mutation. `write_anndata(adata, result, n_top_genes=2000)` stores
-HVG annotations and parameters in `.var`, configuration/selection in `.uns["sct"]`,
-and available outputs in `.layers["sct_residuals"]` / `.layers["sct_corrected_umi"]`.
-It preserves `.X` and other layers; `copy=True` returns a new AnnData. Summary results
-write no dense layer and replace previous SCT outputs. Residuals for excluded genes
-are NaN: subset to `.var["sct_eligible_gene"]` or HVGs before downstream PCA.
+```python
+from sctpy import SCTConfig, fit_transform_anndata, write_anndata
 
-Install the experimental fitting backend with `.[gpu]` for the current CUDA 13/RAPIDS
-stack or `.[gpu-cu12]` for CUDA 12, then select it with
-`SCTConfig.r_v2(cox_reid_backend="cupy")`. Inputs and results remain on CPU; only bounded
-Cox--Reid root blocks move to the current CuPy device. The backend respects the active
-stream and allocator and never installs or reconfigures RMM.
+result = fit_transform_anndata(
+    adata, layer="counts", config=SCTConfig.r_v2(), return_corrected_umi=True
+)
+write_anndata(adata, result, n_top_genes=2000)
+```
+
+Fitting does not mutate `adata`. Explicit write-back stores HVGs and parameters in `.var`,
+configuration/selection in `.uns["sct"]`, and outputs in `.layers["sct_residuals"]` and
+`.layers["sct_corrected_umi"]`. It preserves `.X` and unrelated layers; `copy=True`
+returns a new AnnData. Write-back replaces previous SCT outputs, removing the residual
+layer for summary results. Excluded genes have NaN residuals: subset to
+`.var["sct_eligible_gene"]` or HVGs before PCA.
+
+## Experimental GPU fitting
+
+Install one matching extra: `python -m pip install -e ".[gpu]"` for CUDA 13, or
+`.[gpu-cu12]` for CUDA 12. Select it with `SCTConfig.r_v2(cox_reid_backend="cupy")`.
+Only batched Cox--Reid dispersion roots run on GPU; inputs and results remain on CPU,
+with bounded fitting blocks transferred to/from the selected CuPy device. The backend
+respects the active stream and allocator without reconfiguring RMM. See the
+[backend boundary](docs/RAPIDS_INTEGRATION.md) for scope and profiling details.
 
 ## Development
 
@@ -88,11 +101,14 @@ mypy
 python -m pytest
 ```
 
-CI covers Windows and Linux on Python 3.10--3.14, AnnData H5AD round-trips, package build,
-metadata checks, and an isolated wheel smoke test. Type checks run on Python 3.13;
-each test has a 60-second timeout. CUDA is not required by the package or test suite.
+CI covers Windows/Linux on Python 3.10–3.14 and macOS on 3.11, 3.13 and 3.14, plus
+package build, metadata checks, source-distribution tests and an isolated wheel install.
+Tests include high-precision dispersion references, filtered-gene residual floors,
+sparse/dense and block consistency, AnnData round-trips, and frozen R numerical outputs.
+GPU tests explicitly skip when their dependencies or hardware are unavailable.
 
-Implementation details are kept in five focused documents:
+R comparisons apply to the tested inputs and selection manifests; they do not establish
+bit identity or universal equivalence. Further details:
 
 - [SCT v2 specification](docs/SCT_V2_SPEC.md)
 - [validation and profiling](docs/VALIDATION.md)
