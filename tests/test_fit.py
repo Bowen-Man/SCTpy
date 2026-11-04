@@ -99,7 +99,7 @@ def test_cox_reid_fit_matches_external_golden_values() -> None:
     np.testing.assert_allclose(actual_intercept, expected_intercept, rtol=1.0e-9)
 
 
-def test_batched_cox_reid_matches_score_golden_and_scalar_fit() -> None:
+def test_batched_cox_reid_matches_score_reference_and_scalar_fit() -> None:
     exposure = np.array(
         [80, 95, 110, 130, 90, 150, 105, 125, 100, 140, 115, 85],
         dtype=np.float64,
@@ -120,7 +120,9 @@ def test_batched_cox_reid_matches_score_golden_and_scalar_fit() -> None:
         [
             0.03971052386506343,
             5.592784326327438,
-            -1.68518843091391e-07,
+            # Independent 80-digit integer sum; the historical oracle value
+            # -1.68518843091391e-07 contains the small-dispersion error.
+            -1.9020701317774512e-07,
             -1.168731328214636,
         ]
     )
@@ -174,21 +176,3 @@ def test_local_median_trend_gene_bins_are_explicit() -> None:
     np.testing.assert_array_equal(actual, expected)
     with pytest.raises(ValueError, match="gene_bin_size"):
         local_median_dispersion_trend(abundance, dispersion, gene_bin_size=0)
-
-
-def test_cox_reid_trace_does_not_change_the_fit() -> None:
-    exposure = np.array([80, 95, 110, 130, 90, 150], dtype=np.float64)
-    counts = np.array([0, 1, 0, 2, 1, 3], dtype=np.float64)
-    events: list[dict[str, float | int | str | bool]] = []
-
-    expected = fit_cox_reid_offset(counts, exposure)
-    actual = fit_cox_reid_offset(counts, exposure, trace=events.append)
-
-    assert actual == expected
-    assert events[0]["event"] == "initialization"
-    assert any(event["stage"] == "preliminary_offset" for event in events)
-    assert any(
-        event["stage"] == "cox_reid_dispersion" and event["event"] == "score_evaluation"
-        for event in events
-    )
-    assert events[-1]["event"] == "result"

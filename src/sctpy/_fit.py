@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from scipy.optimize import brentq, minimize
@@ -10,7 +9,6 @@ from scipy.special import digamma, gammaln
 
 FitMethod = Literal["nb_mle", "cox_reid"]
 ThetaPostprocess = Literal["none", "moment_ratio"]
-FitTrace = Callable[[dict[str, float | int | str | bool]], None]
 
 _COX_REID_CORRECTION = 0.99
 _DISPERSION_FLOOR = 1.0e-8
@@ -25,16 +23,6 @@ class GeneFit:
     objective: float
     iterations: int
     message: str
-
-
-def _emit_trace(
-    trace: FitTrace | None,
-    stage: str,
-    event: str,
-    **values: float | int | str | bool,
-) -> None:
-    if trace is not None:
-        trace({"stage": stage, "event": event, **values})
 
 
 def theta_moment_ratio_mask(
@@ -159,42 +147,21 @@ def offset_intercept(
     y: np.ndarray,
     exposure: np.ndarray,
     dispersion: float,
-    *,
-    trace: FitTrace | None = None,
-    trace_stage: str = "offset_intercept",
 ) -> tuple[float, int]:
     """Fit one offset intercept for a fixed NB2 dispersion."""
     if float(np.sum(y)) == 0.0:
-        _emit_trace(trace, trace_stage, "all_zero", intercept=-np.inf)
         return -np.inf, 0
     if dispersion == 0.0:
         intercept = poisson_offset_intercept(y, exposure)
-        _emit_trace(trace, trace_stage, "poisson", intercept=intercept)
         return intercept, 0
 
     center = poisson_offset_intercept(y, exposure)
     lower = center - 30.0
     upper = center + 30.0
-    _emit_trace(
-        trace,
-        trace_stage,
-        "initialization",
-        dispersion=dispersion,
-        center=center,
-        lower=lower,
-        upper=upper,
-    )
 
     def score(intercept: float) -> float:
         mu = np.exp(intercept) * exposure
         value = float(np.sum((y - mu) / (1.0 + dispersion * mu)))
-        _emit_trace(
-            trace,
-            trace_stage,
-            "score_evaluation",
-            intercept=intercept,
-            score=value,
-        )
         return value
 
     root, result = brentq(
@@ -204,16 +171,6 @@ def offset_intercept(
         xtol=1.0e-12,
         rtol=1.0e-14,
         full_output=True,
-    )
-    _emit_trace(
-        trace,
-        trace_stage,
-        "result",
-        intercept=float(root),
-        iterations=int(result.iterations),
-        function_calls=int(result.function_calls),
-        converged=bool(result.converged),
-        flag=str(result.flag),
     )
     return float(root), int(result.iterations)
 
@@ -226,6 +183,31 @@ def _cox_reid_score(log_dispersion: float, y: np.ndarray, mu: np.ndarray) -> flo
             np.asarray(mu, dtype=np.float64)[None, :],
         )[0]
     )
+
+
+def _scaled_digamma_difference(
+    dispersion: Any, counts: Any, *, xp: Any = np, psi: Any = digamma
+) -> Any:
+    """Return theta*(psi(theta+y)-psi(theta)) without small-phi cancellation.
+
+    DLMF 5.11.2 and 5.11(ii): after B12, the two positive-real remainder
+    bounds sum to at most phi**13/6. The switch limits this to float64 epsilon
+    per count, independently of observed oracle agreement.
+    """
+    cutoff = (6.0 * np.finfo(np.float64).eps) ** (1.0 / 13.0)
+    phi = xp.minimum(dispersion, cutoff)[:, None]
+    log_ratio = xp.log1p(phi * counts)
+    series = log_ratio / phi + 0.5 * (phi * counts) / (1.0 + phi * counts)
+    # B_(2k)/(2k), k=1..6, from the Bernoulli-number expansion.
+    coefficients = (1 / 12, -1 / 120, 1 / 252, -1 / 240, 1 / 132, -691 / 32760)
+    for k, coefficient in enumerate(coefficients, start=1):
+        power = 2 * k
+        series -= coefficient * phi ** (power - 1) * xp.expm1(-power * log_ratio)
+    theta = (1.0 / dispersion)[:, None]
+    # Bound the unused branch too, avoiding cancellation at huge theta.
+    direct_theta = xp.minimum(theta, 1.0 / cutoff)
+    direct = direct_theta * (psi(direct_theta + counts) - psi(direct_theta))
+    return xp.where(dispersion[:, None] <= cutoff, series, direct)
 
 
 def _cox_reid_score_batch(
@@ -242,41 +224,18 @@ def _cox_reid_score_batch(
     regular = ~(tiny | small)
     likelihood_term[tiny] = scaled_mu[tiny] ** 2 * (1.0 / (1.0 + scaled_mu[tiny]) - 0.5)
     inverse = np.broadcast_to(inverse_dispersion[:, None], mu.shape)
-    suggestion = np.log(1.0 + scaled_mu[small]) - mu[small] / (
-        mu[small] + inverse[small]
-    )
+    suggestion = np.log1p(scaled_mu[small]) - mu[small] / (mu[small] + inverse[small])
     upper = scaled_mu[small] ** 2 / (1.0 + scaled_mu[small])
     lower = scaled_mu[small] ** 2 * (1.0 / (1.0 + scaled_mu[small]) - 0.5)
     likelihood_term[small] = np.clip(suggestion, lower, upper)
-    likelihood_term[regular] = np.log(1.0 + scaled_mu[regular]) - mu[regular] / (
+    likelihood_term[regular] = np.log1p(scaled_mu[regular]) - mu[regular] / (
         mu[regular] + inverse[regular]
     )
     likelihood_score = inverse_dispersion * np.sum(
         likelihood_term + y / (mu + inverse_dispersion[:, None]), axis=1
     )
 
-    count_sum = y.sum(axis=1, dtype=np.float64)
-    correction = np.zeros(y.shape[0], dtype=np.float64)
-    corrected = inverse_dispersion > 1.0e5
-    correction[corrected] = np.sum(
-        y[corrected] * (y[corrected] - 1.0), axis=1, dtype=np.float64
-    ) / (2.0 * inverse_dispersion[corrected])
-    asymptotic = np.max(y, axis=1) * 1.0e6 < inverse_dispersion
-    digamma_score = count_sum - correction
-    exact = ~asymptotic
-    if np.any(exact):
-        exact_score = np.sum(
-            (
-                digamma(y[exact] + inverse_dispersion[exact, None])
-                - digamma(inverse_dispersion[exact, None])
-            )
-            * inverse_dispersion[exact, None],
-            axis=1,
-            dtype=np.float64,
-        )
-        digamma_score[exact] = np.minimum(
-            exact_score, count_sum[exact] - correction[exact]
-        )
+    digamma_score = np.sum(_scaled_digamma_difference(dispersion, y), axis=1)
 
     weights = mu / (1.0 + dispersion[:, None] * mu)
     adjustment = (
@@ -393,9 +352,7 @@ def fit_cox_reid_offset_batch(y: np.ndarray, exposure: np.ndarray) -> list[GeneF
     return output
 
 
-def fit_cox_reid_offset(
-    y: np.ndarray, exposure: np.ndarray, *, trace: FitTrace | None = None
-) -> GeneFit:
+def fit_cox_reid_offset(y: np.ndarray, exposure: np.ndarray) -> GeneFit:
     """Estimate an offset NB2 model with Cox--Reid adjusted dispersion."""
     mean = float(np.mean(y))
     if mean == 0.0:
@@ -412,46 +369,15 @@ def fit_cox_reid_offset(
         (variance - mean / float(np.mean(exposure))) / mean**2,
         0.0,
     )
-    _emit_trace(
-        trace,
-        "cox_reid",
-        "initialization",
-        mean=mean,
-        variance=variance,
-        initial_dispersion=initial_dispersion,
-    )
     preliminary_intercept, beta_iterations = offset_intercept(
         y,
         exposure,
         initial_dispersion,
-        trace=trace,
-        trace_stage="preliminary_offset",
     )
     mu = np.exp(preliminary_intercept) * exposure
 
-    score_function: Callable[[float, np.ndarray, np.ndarray], float]
-    if trace is None:
-        score_function = _cox_reid_score
-    else:
-
-        def traced_score(
-            log_dispersion: float, values: np.ndarray, fitted_mean: np.ndarray
-        ) -> float:
-            value = _cox_reid_score(log_dispersion, values, fitted_mean)
-            _emit_trace(
-                trace,
-                "cox_reid_dispersion",
-                "score_evaluation",
-                log_dispersion=log_dispersion,
-                dispersion=float(np.exp(log_dispersion)),
-                score=value,
-            )
-            return value
-
-        score_function = traced_score
-
     lower = float(np.log(_DISPERSION_FLOOR))
-    lower_score = score_function(lower, y, mu)
+    lower_score = _cox_reid_score(lower, y, mu)
     dispersion_iterations = 0
     if lower_score < 0.0:
         dispersion = 0.0
@@ -460,16 +386,16 @@ def fit_cox_reid_offset(
             max(initial_dispersion, _DISPERSION_FLOOR * 4.0),
             _DISPERSION_CEILING,
         )
-        upper_score = score_function(np.log(upper_dispersion), y, mu)
+        upper_score = _cox_reid_score(np.log(upper_dispersion), y, mu)
         while upper_score > 0.0 and upper_dispersion < _DISPERSION_CEILING:
             upper_dispersion = min(upper_dispersion * 4.0, _DISPERSION_CEILING)
-            upper_score = score_function(np.log(upper_dispersion), y, mu)
+            upper_score = _cox_reid_score(np.log(upper_dispersion), y, mu)
             dispersion_iterations += 1
         if upper_score > 0.0:
             dispersion = _DISPERSION_CEILING
         else:
             root, result = brentq(
-                score_function,
+                _cox_reid_score,
                 lower,
                 np.log(upper_dispersion),
                 args=(y, mu),
@@ -491,17 +417,6 @@ def fit_cox_reid_offset(
         objective = float(
             np.sum(mu - y * np.log(mu) + gammaln(y + 1.0), dtype=np.float64)
         )
-    _emit_trace(
-        trace,
-        "cox_reid",
-        "result",
-        preliminary_intercept=preliminary_intercept,
-        theta=float(theta),
-        dispersion=float(dispersion),
-        beta_iterations=beta_iterations,
-        dispersion_iterations=dispersion_iterations,
-        objective=objective,
-    )
     return GeneFit(
         intercept=preliminary_intercept,
         theta=float(theta),
