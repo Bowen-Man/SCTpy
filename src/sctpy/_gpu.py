@@ -4,15 +4,16 @@ import importlib
 from typing import Any, NamedTuple
 
 import numpy as np
-from scipy.special import gammaln
 
 from ._fit import (
     _COX_REID_CORRECTION,
     _DISPERSION_CEILING,
     _DISPERSION_FLOOR,
+    _DISPERSION_ROOT_STEPS,
+    _LOG_DISPERSION_TOLERANCE,
     GeneFit,
+    _cox_reid_fit_result,
     _cox_reid_score_batch,
-    _negative_log_likelihood_and_gradient,
     _scaled_digamma_difference,
     fit_cox_reid_offset_batch,
     offset_intercept,
@@ -73,6 +74,7 @@ class _CupyRootResult(NamedTuple):
     theta: Any
     poisson: Any
     ceiling: Any
+    converged: Any
     expansion_iterations: Any
     root_iterations: Any
     expansion_rounds: int
@@ -84,6 +86,7 @@ def _dispersion_roots_cupy(
 ) -> _CupyRootResult:
     lower = cp.full(counts.shape[0], np.log(_DISPERSION_FLOOR), dtype=cp.float64)
     lower_score = _cox_reid_score_cupy(cp, digamma, lower, counts, mu)
+    valid = cp.isfinite(lower_score)
     poisson = lower_score < 0.0
     upper_dispersion = cp.minimum(
         cp.maximum(initial_dispersion, _DISPERSION_FLOOR * 4.0),
@@ -92,12 +95,16 @@ def _dispersion_roots_cupy(
     upper_score = _cox_reid_score_cupy(
         cp, digamma, cp.log(upper_dispersion), counts, mu
     )
+    valid &= poisson | cp.isfinite(upper_score)
     expansion_iterations = cp.zeros(counts.shape[0], dtype=cp.int64)
     expansion_rounds = 0
     host_synchronizations = 0
     while True:
         expanding = (
-            (~poisson) & (upper_score > 0.0) & (upper_dispersion < _DISPERSION_CEILING)
+            valid
+            & (~poisson)
+            & (upper_score > 0.0)
+            & (upper_dispersion < _DISPERSION_CEILING)
         )
         host_synchronizations += 1
         if not bool(cp.any(expanding).get()):
@@ -112,14 +119,19 @@ def _dispersion_roots_cupy(
             cp, digamma, cp.log(upper_dispersion), counts, mu
         )
         upper_score = cp.where(expanding, candidate_score, upper_score)
+        valid &= poisson | cp.isfinite(upper_score)
         expansion_iterations += expanding
 
     ceiling = (~poisson) & (upper_score > 0.0)
-    bracketed = ~(poisson | ceiling)
+    bracketed = valid & ~(poisson | ceiling)
     upper = cp.log(upper_dispersion)
-    for _ in range(48):
+    root_iterations = cp.zeros(counts.shape[0], dtype=cp.int64)
+    for _ in range(_DISPERSION_ROOT_STEPS):
         midpoint = 0.5 * (lower + upper)
         score = _cox_reid_score_cupy(cp, digamma, midpoint, counts, mu)
+        root_iterations += bracketed
+        valid &= ~bracketed | cp.isfinite(score)
+        bracketed &= valid
         positive = (score > 0.0) & bracketed
         lower = cp.where(positive, midpoint, lower)
         upper = cp.where((~positive) & bracketed, midpoint, upper)
@@ -127,12 +139,16 @@ def _dispersion_roots_cupy(
     dispersion = cp.exp(0.5 * (lower + upper))
     dispersion = cp.where(poisson, 0.0, dispersion)
     dispersion = cp.where(ceiling, _DISPERSION_CEILING, dispersion)
+    dispersion = cp.where(valid, dispersion, cp.nan)
     theta = cp.where(dispersion == 0.0, cp.inf, 1.0 / dispersion)
-    root_iterations = bracketed.astype(cp.int64) * 48
+    converged = valid & (
+        poisson | (bracketed & ((upper - lower) <= _LOG_DISPERSION_TOLERANCE))
+    )
     return _CupyRootResult(
         theta,
         poisson,
         ceiling,
+        converged,
         expansion_iterations,
         root_iterations,
         expansion_rounds,
@@ -182,6 +198,7 @@ def fit_cox_reid_offset_batch_cupy(
     root_iterations = cp.asnumpy(device_result.root_iterations)
     gpu_poisson = cp.asnumpy(device_result.poisson)
     gpu_ceiling = cp.asnumpy(device_result.ceiling)
+    root_converged = cp.asnumpy(device_result.converged)
 
     lower_score = _cox_reid_score_batch(
         np.full(counts.shape[0], np.log(_DISPERSION_FLOOR)), counts, mu
@@ -207,38 +224,33 @@ def fit_cox_reid_offset_batch_cupy(
     )
 
     output: list[GeneFit] = []
-    log_exposure = np.log(exposure)
     for index in range(counts.shape[0]):
         if index in fallback:
             output.append(fallback[index])
             continue
-        if np.isfinite(theta[index]):
-            objective, _ = _negative_log_likelihood_and_gradient(
-                np.asarray([intercept[index], np.log(theta[index])]),
-                counts[index],
-                log_exposure,
-            )
+        if gpu_ceiling[index]:
+            message = "Cox-Reid dispersion ceiling reached without a root"
+        elif gpu_poisson[index]:
+            message = "Cox-Reid Poisson boundary"
         else:
-            objective = float(
-                np.sum(
-                    mu[index]
-                    - counts[index] * np.log(mu[index])
-                    + gammaln(counts[index] + 1.0),
-                    dtype=np.float64,
-                )
+            message = (
+                "Cox-Reid dispersion root"
+                if root_converged[index]
+                else "Cox-Reid root did not converge"
             )
         output.append(
-            GeneFit(
-                intercept=float(intercept[index]),
-                theta=float(theta[index]),
-                converged=True,
-                objective=float(objective),
+            _cox_reid_fit_result(
+                counts[index],
+                exposure,
+                float(intercept[index]),
+                float(theta[index]),
+                converged=bool(root_converged[index]),
                 iterations=int(
                     intercept_iterations[index]
                     + expansion_iterations[index]
                     + root_iterations[index]
                 ),
-                message="batched Cox-Reid adjusted dispersion fit",
+                message=message,
             )
         )
     return output

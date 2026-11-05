@@ -17,6 +17,7 @@ from ._fit import (
     fit_nb_offset,
     local_median_dispersion_trend,
     offset_intercept,
+    offset_negative_log_likelihood,
     poisson_offset_intercept,
     theta_moment_ratio_mask,
 )
@@ -332,7 +333,8 @@ def _residuals_and_summary(
                 raise OverflowError(
                     "corrected UMI calculation produced non-finite values"
                 )
-            if np.any(corrected > np.iinfo(np.int64).max):
+            # float64 rounds int64.max up to 2**63, which is already out of range.
+            if np.any(corrected >= float(2**63)):
                 raise OverflowError("corrected UMI values exceed int64 range")
             corrected_block = sparse.csr_matrix(corrected.astype(np.int64))
             assert corrected_row_nnz is not None
@@ -477,6 +479,13 @@ def fit_transform(
         poisson_intercept[gene_index] = poisson_offset_intercept(y, poisson_exposure)
         raw_intercept[gene_index] = poisson_intercept[gene_index]
         raw_theta[gene_index] = np.inf
+        fit_objective[gene_index] = offset_negative_log_likelihood(
+            y, library_size, raw_intercept[gene_index], np.inf
+        )
+        converged[gene_index] = bool(
+            np.isfinite(raw_intercept[gene_index])
+            and np.isfinite(fit_objective[gene_index])
+        )
         fit_message[gene_index] = (
             "R compatibility Poisson fraction (eligible total)"
             if resolved_config.fit_method == "cox_reid"
@@ -551,18 +560,24 @@ def fit_transform(
         )
         for gene_index, dispersion in zip(fitted, dispersion_trend, strict=True):
             y = dense_gene_row(fit_counts, int(gene_index))
-            raw_intercept[gene_index], iterations = offset_intercept(
-                y, fit_library_size, float(dispersion)
-            )
-            fit_iterations[gene_index] += iterations
-            fit_message[gene_index] = "Cox-Reid dispersion with local-median refit"
+            try:
+                raw_intercept[gene_index], iterations = offset_intercept(
+                    y, fit_library_size, float(dispersion)
+                )
+            except (ValueError, RuntimeError):
+                converged[gene_index] = False
+                status[gene_index] = "fit_failed"
+                fit_message[gene_index] = "Cox-Reid local-median intercept refit failed"
+            else:
+                fit_iterations[gene_index] += iterations
+                fit_message[gene_index] += "; local-median intercept refit"
     timing["fit"] = perf_counter() - stage_start
 
     stage_start = perf_counter()
     theta_postprocessed = np.zeros(genes, dtype=bool)
     if resolved_config.theta_postprocess == "moment_ratio":
         candidates = np.flatnonzero(
-            step1_candidate & selected_gene_mask & ~np.isnan(raw_theta)
+            step1_candidate & selected_gene_mask & converged & ~np.isnan(raw_theta)
         )
         theta_postprocessed[candidates] = theta_moment_ratio_mask(
             gene_mean[candidates],
@@ -573,6 +588,24 @@ def fit_transform(
         raw_theta[theta_postprocessed] = np.inf
         for gene_index in np.flatnonzero(theta_postprocessed):
             status[gene_index] = "theta_postprocessed"
+            fit_message[gene_index] += "; moment-ratio theta postprocess"
+    # Raw intercepts can change in the trend refit and raw theta in postprocessing.
+    # This diagnostic is the unadjusted NLL at the returned raw pair, not the CR
+    # objective or evidence that this mixed pair jointly maximizes a likelihood.
+    for gene_index, _ in gene_fits:
+        fit_objective[gene_index] = offset_negative_log_likelihood(
+            dense_gene_row(fit_counts, gene_index),
+            fit_library_size,
+            raw_intercept[gene_index],
+            raw_theta[gene_index],
+        )
+        if not (
+            np.isfinite(raw_intercept[gene_index])
+            and np.isfinite(fit_objective[gene_index])
+        ):
+            converged[gene_index] = False
+            status[gene_index] = "fit_failed"
+            fit_message[gene_index] = "non-finite final raw-parameter diagnostic"
     timing["theta_postprocess"] = perf_counter() - stage_start
 
     non_poisson = eligible & ~poisson_gene

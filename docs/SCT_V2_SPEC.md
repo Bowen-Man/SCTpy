@@ -59,6 +59,27 @@ In the Cox--Reid v2 path the Poisson intercept uses the total across genes passi
 **measured** against R 0.4.3 on public PBMC counts (intercept error below `2e-15`).
 The native research path uses the full input total. An all-zero gene is excluded.
 
+## Fit diagnostics
+
+`fit_objective` is the **unadjusted negative log likelihood at the returned
+`raw_intercept` and `raw_theta`**, recomputed after the trend-intercept refit and
+theta postprocessing. It uses selected fitting cells and their full-input library
+sizes; analytic Poisson genes instead use all input cells. It is neither the
+Cox--Reid adjusted optimization objective nor a claim that the returned raw pair
+jointly maximizes a likelihood. Unfitted genes retain NaN.
+
+`converged` means the required fitting steps succeeded with finite parameters and
+objective (positive infinite theta is the valid Poisson limit). The Poisson
+compatibility formula is an accepted analytic branch, not a claim of full-exposure
+MLE optimality. A finite negative score at the dispersion floor accepts the Poisson
+boundary; a root must satisfy the scalar solver's convergence result or a finite
+batched sign bracket of log-width at most `1e-10`. Reaching the upper dispersion
+bound without a root, non-finite scores/objectives, exhausted iterations, and failed
+refits are failures. `fit_message` records the reason; failed initial fits are excluded
+from the dispersion trend, and all failed fits/refits are excluded from subsequent
+smoother training. They may have `fit_status="regularized_after_fit_failure"`.
+No available training genes remains an explicit error. **project decision; tested**
+
 ## Regularization
 
 Raw non-Poisson parameters are smoothed against
@@ -125,6 +146,8 @@ and [`correct`](https://rdrr.io/cran/sctransform/man/correct.html) API contracts
 genes-by-cells CSR matrix; excluded genes remain zero. It is produced in the residual
 gene blocks, does not require retaining the dense residual matrix, and always uses the
 float64 model even when residual output is float32.
+Before int64 conversion, non-finite values and rounded counts `>= 2**63` raise
+`OverflowError`; float64 cannot represent `int64.max` exactly. **project decision; tested**
 
 ## Explicit exclusions
 
