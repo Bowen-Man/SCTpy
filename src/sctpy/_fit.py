@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import numpy as np
 from scipy.optimize import brentq, minimize
-from scipy.special import digamma, gammaln
+from scipy.special import digamma, gammaln, xlogy
 
 FitMethod = Literal["nb_mle", "cox_reid"]
 ThetaPostprocess = Literal["none", "moment_ratio"]
@@ -13,6 +13,8 @@ ThetaPostprocess = Literal["none", "moment_ratio"]
 _COX_REID_CORRECTION = 0.99
 _DISPERSION_FLOOR = 1.0e-8
 _DISPERSION_CEILING = 1.0e16
+_DISPERSION_ROOT_STEPS = 48
+_LOG_DISPERSION_TOLERANCE = 1.0e-10
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,43 @@ def _negative_log_likelihood_and_gradient(
     return objective, gradient
 
 
+def offset_negative_log_likelihood(
+    y: np.ndarray, exposure: np.ndarray, intercept: float, theta: float
+) -> float:
+    """Unadjusted NB2 (or Poisson-limit) NLL at the supplied parameters."""
+    if np.isnan(theta) or theta <= 0.0:
+        return np.nan
+    if np.isinf(theta):
+        mu = np.exp(intercept) * exposure
+        return float(np.sum(mu - xlogy(y, mu) + gammaln(y + 1.0)))
+    objective, _ = _negative_log_likelihood_and_gradient(
+        np.asarray([intercept, np.log(theta)]), y, np.log(exposure)
+    )
+    return objective
+
+
+def _cox_reid_fit_result(
+    y: np.ndarray,
+    exposure: np.ndarray,
+    intercept: float,
+    theta: float,
+    *,
+    converged: bool,
+    iterations: int,
+    message: str,
+) -> GeneFit:
+    objective = offset_negative_log_likelihood(y, exposure, intercept, theta)
+    finite = np.isfinite(intercept) and np.isfinite(objective) and theta > 0.0
+    return GeneFit(
+        intercept=intercept,
+        theta=theta,
+        converged=bool(converged and finite),
+        objective=objective,
+        iterations=iterations,
+        message=message if finite else "non-finite Cox-Reid fit",
+    )
+
+
 def fit_nb_offset(
     y: np.ndarray,
     exposure: np.ndarray,
@@ -172,6 +211,8 @@ def offset_intercept(
         rtol=1.0e-14,
         full_output=True,
     )
+    if not result.converged or not np.isfinite(root):
+        raise RuntimeError("offset intercept did not converge")
     return float(root), int(result.iterations)
 
 
@@ -270,15 +311,20 @@ def fit_cox_reid_offset_batch(y: np.ndarray, exposure: np.ndarray) -> list[GeneF
 
     lower = np.full(y.shape[0], np.log(_DISPERSION_FLOOR), dtype=np.float64)
     lower_score = _cox_reid_score_batch(lower, y, mu)
+    valid = np.isfinite(lower_score)
     poisson = lower_score < 0.0
     upper_dispersion = np.minimum(
         np.maximum(initial_dispersion, _DISPERSION_FLOOR * 4.0),
         _DISPERSION_CEILING,
     )
     upper_score = _cox_reid_score_batch(np.log(upper_dispersion), y, mu)
+    valid &= poisson | np.isfinite(upper_score)
     expansion_iterations = np.zeros(y.shape[0], dtype=np.int64)
     expanding = (
-        (~poisson) & (upper_score > 0.0) & (upper_dispersion < _DISPERSION_CEILING)
+        valid
+        & (~poisson)
+        & (upper_score > 0.0)
+        & (upper_dispersion < _DISPERSION_CEILING)
     )
     while np.any(expanding):
         upper_dispersion[expanding] = np.minimum(
@@ -291,20 +337,26 @@ def fit_cox_reid_offset_batch(y: np.ndarray, exposure: np.ndarray) -> list[GeneF
             mu[expanding_indices],
         )
         expansion_iterations[expanding_indices] += 1
+        valid &= poisson | np.isfinite(upper_score)
         expanding = (
-            (~poisson) & (upper_score > 0.0) & (upper_dispersion < _DISPERSION_CEILING)
+            valid
+            & (~poisson)
+            & (upper_score > 0.0)
+            & (upper_dispersion < _DISPERSION_CEILING)
         )
 
     ceiling = (~poisson) & (upper_score > 0.0)
-    bracketed = ~(poisson | ceiling)
+    bracketed = valid & ~(poisson | ceiling)
     upper = np.log(upper_dispersion)
     root_iterations = np.zeros(y.shape[0], dtype=np.int64)
-    for _ in range(48):
+    for _ in range(_DISPERSION_ROOT_STEPS):
         active_indices = np.flatnonzero(bracketed)
         if active_indices.size == 0:
             break
         midpoint = 0.5 * (lower[active_indices] + upper[active_indices])
         score = _cox_reid_score_batch(midpoint, y[active_indices], mu[active_indices])
+        valid[active_indices] &= np.isfinite(score)
+        bracketed &= valid
         positive = score > 0.0
         lower[active_indices[positive]] = midpoint[positive]
         upper[active_indices[~positive]] = midpoint[~positive]
@@ -313,6 +365,7 @@ def fit_cox_reid_offset_batch(y: np.ndarray, exposure: np.ndarray) -> list[GeneF
     dispersion = np.exp(0.5 * (lower + upper))
     dispersion[poisson] = 0.0
     dispersion[ceiling] = _DISPERSION_CEILING
+    dispersion[~valid] = np.nan
     theta = np.divide(
         1.0,
         dispersion,
@@ -320,33 +373,40 @@ def fit_cox_reid_offset_batch(y: np.ndarray, exposure: np.ndarray) -> list[GeneF
         where=dispersion != 0.0,
     )
     output: list[GeneFit] = []
-    log_exposure = np.log(exposure)
     for index in range(y.shape[0]):
-        if np.isfinite(theta[index]):
-            objective, _ = _negative_log_likelihood_and_gradient(
-                np.asarray([intercept[index], np.log(theta[index])]),
-                y[index],
-                log_exposure,
-            )
-        else:
-            objective = float(
-                np.sum(
-                    mu[index] - y[index] * np.log(mu[index]) + gammaln(y[index] + 1.0),
-                    dtype=np.float64,
+        success = bool(
+            valid[index]
+            and (
+                poisson[index]
+                or (
+                    bracketed[index]
+                    and upper[index] - lower[index] <= _LOG_DISPERSION_TOLERANCE
                 )
             )
+        )
+        if ceiling[index]:
+            message = "Cox-Reid dispersion ceiling reached without a root"
+        elif poisson[index]:
+            message = "Cox-Reid Poisson boundary"
+        else:
+            message = (
+                "Cox-Reid dispersion root"
+                if success
+                else "Cox-Reid root did not converge"
+            )
         output.append(
-            GeneFit(
-                intercept=float(intercept[index]),
-                theta=float(theta[index]),
-                converged=True,
-                objective=float(objective),
+            _cox_reid_fit_result(
+                y[index],
+                exposure,
+                float(intercept[index]),
+                float(theta[index]),
+                converged=success,
                 iterations=int(
                     intercept_iterations[index]
                     + expansion_iterations[index]
                     + root_iterations[index]
                 ),
-                message="batched Cox-Reid adjusted dispersion fit",
+                message=message,
             )
         )
     return output
@@ -379,51 +439,69 @@ def fit_cox_reid_offset(y: np.ndarray, exposure: np.ndarray) -> GeneFit:
     lower = float(np.log(_DISPERSION_FLOOR))
     lower_score = _cox_reid_score(lower, y, mu)
     dispersion_iterations = 0
-    if lower_score < 0.0:
+    converged = False
+    message = "non-finite Cox-Reid score"
+    if not np.isfinite(lower_score):
+        dispersion = np.nan
+    elif lower_score < 0.0:
         dispersion = 0.0
+        converged = True
+        message = "Cox-Reid Poisson boundary"
     else:
         upper_dispersion = min(
             max(initial_dispersion, _DISPERSION_FLOOR * 4.0),
             _DISPERSION_CEILING,
         )
         upper_score = _cox_reid_score(np.log(upper_dispersion), y, mu)
-        while upper_score > 0.0 and upper_dispersion < _DISPERSION_CEILING:
+        while (
+            np.isfinite(upper_score)
+            and upper_score > 0.0
+            and upper_dispersion < _DISPERSION_CEILING
+        ):
             upper_dispersion = min(upper_dispersion * 4.0, _DISPERSION_CEILING)
             upper_score = _cox_reid_score(np.log(upper_dispersion), y, mu)
             dispersion_iterations += 1
-        if upper_score > 0.0:
+        if not np.isfinite(upper_score):
+            dispersion = np.nan
+        elif upper_score > 0.0:
             dispersion = _DISPERSION_CEILING
+            message = "Cox-Reid dispersion ceiling reached without a root"
         else:
-            root, result = brentq(
-                _cox_reid_score,
-                lower,
-                np.log(upper_dispersion),
-                args=(y, mu),
-                xtol=1.0e-10,
-                rtol=1.0e-14,
-                full_output=True,
-            )
-            dispersion = float(np.exp(root))
-            dispersion_iterations += int(result.iterations)
+            try:
+                root, result = brentq(
+                    _cox_reid_score,
+                    lower,
+                    np.log(upper_dispersion),
+                    args=(y, mu),
+                    xtol=_LOG_DISPERSION_TOLERANCE,
+                    rtol=1.0e-14,
+                    full_output=True,
+                    disp=False,
+                )
+            except ValueError:
+                # A non-finite score encountered inside the bracket is a failed fit.
+                dispersion = np.nan
+            else:
+                dispersion = float(np.exp(root))
+                converged = bool(result.converged and np.isfinite(root))
+                # SciPy's endpoint roots need no iterations.
+                if lower_score != 0.0 and upper_score != 0.0:
+                    dispersion_iterations += int(result.iterations)
+                message = (
+                    "Cox-Reid dispersion root"
+                    if converged
+                    else "Cox-Reid root did not converge"
+                )
 
     theta = np.inf if dispersion == 0.0 else 1.0 / dispersion
-    if np.isfinite(theta):
-        objective, _ = _negative_log_likelihood_and_gradient(
-            np.asarray([preliminary_intercept, np.log(theta)]),
-            y,
-            np.log(exposure),
-        )
-    else:
-        objective = float(
-            np.sum(mu - y * np.log(mu) + gammaln(y + 1.0), dtype=np.float64)
-        )
-    return GeneFit(
-        intercept=preliminary_intercept,
-        theta=float(theta),
-        converged=True,
-        objective=objective,
+    return _cox_reid_fit_result(
+        y,
+        exposure,
+        preliminary_intercept,
+        float(theta),
+        converged=converged,
         iterations=beta_iterations + dispersion_iterations,
-        message="Cox-Reid adjusted dispersion fit",
+        message=message,
     )
 
 
