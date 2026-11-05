@@ -116,6 +116,27 @@ bit identity or universal equivalence. Further details:
 - [RAPIDS/GPU boundary](docs/RAPIDS_INTEGRATION.md)
 - [licensing and provenance](docs/LICENSING.md)
 
+## References
+
+Method papers and numerical references used in SCTpy:
+
+- Hafemeister, C. & Satija, R. (2019).
+  [Normalization and variance stabilization of single-cell RNA-seq data using regularized negative binomial regression](https://doi.org/10.1186/s13059-019-1874-1).
+  *Genome Biology* **20**, 296. Regularized NB models and Pearson residual normalization.
+- Choudhary, S. & Satija, R. (2022).
+  [Comparison and evaluation of statistical error models for scRNA-seq](https://doi.org/10.1186/s13059-021-02584-9).
+  *Genome Biology* **23**, 27. SCTransform v2, fixed-slope fitting and residual variance stabilization.
+- Ahlmann-Eltze, C. & Huber, W. (2020).
+  [glmGamPoi: fitting Gamma-Poisson generalized linear models on single cell count data](https://doi.org/10.1093/bioinformatics/btaa1009).
+  *Bioinformatics* **36**(24), 5701–5702. Gamma–Poisson estimation; see also Supplementary Appendix S1.
+- Sheather, S. J. & Jones, M. C. (1991).
+  [A Reliable Data-Based Bandwidth Selection Method for Kernel Density Estimation](https://doi.org/10.1111/j.2517-6161.1991.tb01857.x).
+  *Journal of the Royal Statistical Society: Series B (Methodological)* **53**(3), 683–690.
+  Bandwidth selection for smoothing.
+- NIST. [Digital Library of Mathematical Functions, §5.11: Asymptotic Expansions](https://dlmf.nist.gov/5.11).
+  [Equation 5.11.2](https://dlmf.nist.gov/5.11.E2) and [§5.11(ii)](https://dlmf.nist.gov/5.11.ii)
+  provide the digamma expansion and remainder bounds used in small-dispersion evaluation.
+
 ## License
 
 BSD-3-Clause. See [LICENSE](LICENSE) and [docs/LICENSING.md](docs/LICENSING.md).
